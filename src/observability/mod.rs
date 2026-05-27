@@ -33,6 +33,11 @@ impl Plugin for ObservabilityPlugin {
                 );
         }
 
+        #[cfg(feature = "debug_overlays")]
+        {
+            app.add_systems(Update, overlays::static_world_overlay_system);
+        }
+
         #[cfg(not(feature = "observability"))]
         let _ = app;
     }

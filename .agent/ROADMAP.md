@@ -51,15 +51,15 @@ Each phase must produce a **working, demonstrable state**. No phase ends with br
 
 ### Tasks
 
-- [ ] `Zone` component + entity spawning
-- [ ] `ResourceNode` component + entity spawning
-- [ ] `SimulationConfig` resource loaded from RON asset
-- [ ] Zone visual representation (colored flat discs)
-- [ ] Resource node visual representation (simple meshes)
-- [ ] `SpatialGrid` resource with update system
-- [ ] Scenario loader — load `equilibrium.ron` by default
-- [ ] Debug overlay: zone radii wireframes
-- [ ] Debug overlay: spatial grid visualization
+- [x] `Zone` component + entity spawning
+- [x] `ResourceNode` component + entity spawning
+- [x] `SimulationConfig` resource loaded from RON asset
+- [x] Zone visual representation (colored flat discs)
+- [x] Resource node visual representation (simple meshes)
+- [x] `SpatialGrid` resource with update system
+- [x] Scenario loader — load `equilibrium.ron` by default
+- [x] Debug overlay: zone radii wireframes
+- [x] Debug overlay: spatial grid visualization
 
 **Deliverable:** Load a scenario → see zones and resource nodes in 3D. Spatial grid updates when objects exist.
 

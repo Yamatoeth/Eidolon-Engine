@@ -127,10 +127,10 @@ emergent-sim/
 - [x] Input mapping
 
 ### Phase 2 — Simulation Core
-- [ ] Zone and ResourceNode entities
-- [ ] Spatial grid implementation
-- [ ] Scenario loading
-- [ ] Debug overlays
+- [x] Zone and ResourceNode entities
+- [x] Spatial grid implementation
+- [x] Scenario loading
+- [x] Debug overlays
 
 ### Phase 3 — Agents
 - [ ] Agent components and spawning

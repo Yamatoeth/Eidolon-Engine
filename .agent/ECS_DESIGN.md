@@ -389,6 +389,13 @@ pub enum ScenarioEventKind {
 | `overlay_draw_system` | Update | `Transform`, `AIDebugInfo`, `Zone` | Bevy Gizmos |
 | `replay_record_system` | FixedUpdate (Post) | snapshot of all relevant state | `ReplayBuffer` |
 
+### Scenario Systems
+
+| System | Schedule | Reads | Writes |
+|---|---|---|---|
+| `load_default_scenario_system` | Startup | `assets/scenarios/equilibrium.ron` | `ActiveScenario`, `SimulationConfig` |
+| `spawn_active_scenario_system` | PostStartup | `ActiveScenario` | `Zone`, `ResourceNode`, `Collider`, visual meshes/materials |
+
 ---
 
 ## Entity Archetypes

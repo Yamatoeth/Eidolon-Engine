@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy_inspector_egui::bevy_egui::{egui, EguiContexts};
 
 use crate::engine::{EngineAction, EngineActionEvent, SimulationTime};
+use crate::simulation::{ResourceNode, Zone};
 
 /// Runtime configuration for Phase 1 observability panels.
 #[derive(Resource, Debug, Clone)]
@@ -43,6 +44,8 @@ pub fn inspector_ui_system(
     mut contexts: EguiContexts,
     mut config: ResMut<ObservabilityConfig>,
     sim_time: Res<SimulationTime>,
+    zones: Query<&Zone>,
+    resources: Query<&ResourceNode>,
 ) {
     if !config.inspector_open {
         return;
@@ -61,6 +64,8 @@ pub fn inspector_ui_system(
                 if sim_time.paused { "Paused" } else { "Running" }
             ));
             ui.separator();
-            ui.label("Entity list will be populated when simulation entities exist.");
+            ui.heading("Static World");
+            ui.label(format!("Zones: {}", zones.iter().count()));
+            ui.label(format!("Resource nodes: {}", resources.iter().count()));
         });
 }
