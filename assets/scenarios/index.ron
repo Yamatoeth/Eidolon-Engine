@@ -1,0 +1,8 @@
+// Scenario Index
+// Lists all available scenarios for loading
+
+[
+    "equilibrium",
+    "scarcity", 
+    "island",
+]

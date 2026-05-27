@@ -1,0 +1,48 @@
+# emergent-sim .gitignore
+
+# Rust build artifacts
+/target/
+*.rlib
+*.dylib
+*.dll
+*.so
+*.exe
+*.swp
+*.swo
+*~
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Local orchestration/runtime state
+.omx/
+
+# Test coverage
+*.profraw
+*.profdata
+/coverage/
+
+# Build artifacts
+*.o
+*.a
+
+# Log files
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp

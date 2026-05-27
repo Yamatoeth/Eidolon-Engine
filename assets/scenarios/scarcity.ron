@@ -1,0 +1,34 @@
+// Scenario: Resource Scarcity (Collapse)
+// Stress test: insufficient resources, population crash
+// Expected: starvation cascade, population collapse
+
+(
+    name: "Resource Scarcity",
+    description: "Overpopulation with scarce resources. Demonstrates cascade failure.",
+    seed: 99,
+    world_size: (100.0, 100.0),
+    
+    agents: (
+        count: 30,
+        distribution: Clustered,
+    ),
+    
+    zones: [
+        (kind: Resource, center: (30.0, 0.0, 50.0), radius: 12.0),
+        (kind: Resource, center: (70.0, 0.0, 50.0), radius: 12.0),
+        (kind: Rest, center: (50.0, 0.0, 80.0), radius: 8.0),
+    ],
+    
+    resources: (
+        nodes_per_resource_zone: 2,
+        initial_amount_fraction: 0.3,
+        regen_rate: 0.1,
+    ),
+    
+    sim_overrides: (
+        global_decay_multiplier: 1.8,
+        global_regen_multiplier: 1.0,
+    ),
+    
+    events: [],
+)

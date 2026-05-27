@@ -1,0 +1,66 @@
+[package]
+name = "emergent-sim"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+description = "A real-time 3D simulation engine with ECS, utility-based AI, and advanced observability"
+
+[dependencies]
+# Core Bevy (0.15)
+bevy = { version = "0.15", features = [
+    "dynamic_linking",
+    "serialize",
+    "wayland",
+    "x11",
+] }
+bevy-inspector-egui = "0.28"
+
+# ECS and utilities
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ron = "0.8"
+
+# Random number generation
+rand = "0.8"
+rand_chacha = "0.3"
+
+# Math (already in Bevy, but explicit)
+glam = "0.27"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Debugging and dev tools
+anyhow = "1.0"
+thiserror = "1.0"
+
+[dev-dependencies]
+tempfile = "3.0"
+approx = "0.5"
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.test]
+opt-level = 1
+
+[[bin]]
+name = "emergent-sim"
+path = "src/main.rs"
+
+[features]
+default = ["observability", "debug_overlays"]
+observability = []
+debug_overlays = []
+headless = []
+
+# Minimal features for headless simulation benchmarks
+headless_minimal = ["headless"]

@@ -1,0 +1,10 @@
+# Clippy configuration for emergent-sim
+
+# Deny all clippy warnings in strict mode
+# Run with: cargo clippy --all-targets --all-features -- -D warnings
+# Run with: cargo clippy --all-targets --all-features -- -D warnings
+
+too-many-arguments-threshold = 8
+type-complexity-threshold = 250
+single-char-binding-names-threshold = 5
+

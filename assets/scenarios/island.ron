@@ -1,0 +1,34 @@
+// Scenario: Single Resource Island
+// Compact scenario: single central resource with distant rest zones
+// Expected: visible "commuting" patterns, resource oscillation
+
+(
+    name: "Single Resource Island",
+    description: "Concentrated competition on central resource. Rich for observability demo.",
+    seed: 77,
+    world_size: (100.0, 100.0),
+    
+    agents: (
+        count: 15,
+        distribution: Random,
+    ),
+    
+    zones: [
+        (kind: Resource, center: (50.0, 0.0, 50.0), radius: 20.0),
+        (kind: Rest, center: (20.0, 0.0, 20.0), radius: 10.0),
+        (kind: Rest, center: (80.0, 0.0, 80.0), radius: 10.0),
+    ],
+    
+    resources: (
+        nodes_per_resource_zone: 4,
+        initial_amount_fraction: 0.8,
+        regen_rate: 1.5,
+    ),
+    
+    sim_overrides: (
+        global_decay_multiplier: 2.0,
+        global_regen_multiplier: 1.0,
+    ),
+    
+    events: [],
+)

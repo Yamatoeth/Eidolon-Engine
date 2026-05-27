@@ -1,0 +1,15 @@
+// Default AI Configuration for emergent-sim
+// This file defines the utility weights and AI behavior parameters
+// Used during Phase 4 (AI System)
+
+(
+    utility_weights: (
+        eat: 1.0,
+        rest: 0.9,
+        explore: 0.4,
+        collect: 0.6,
+        idle: 0.1,
+    ),
+    decision_interval: 0.5,
+    perception_radius: 30.0,
+)
