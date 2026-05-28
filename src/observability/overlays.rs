@@ -30,7 +30,7 @@ pub fn static_world_overlay_system(
     for (transform, zone) in &zone_query {
         gizmos.circle(
             Isometry3d::new(
-                transform.translation + Vec3::Y * 0.08,
+                transform.translation + Vec3::Y * 0.10,
                 Quat::from_rotation_arc(Vec3::Z, Vec3::Y),
             ),
             zone.radius,
@@ -42,13 +42,13 @@ pub fn static_world_overlay_system(
     for (cell, entities) in spatial_grid.populated_cells() {
         let center = Vec3::new(
             cell.x as f32 * spatial_grid.cell_size() + half_cell,
-            0.06,
+            0.055,
             cell.z as f32 * spatial_grid.cell_size() + half_cell,
         );
         let color = if entities.len() > 3 {
-            Color::srgba(0.9, 0.2, 0.14, 0.55)
+            Color::srgba(1.0, 0.34, 0.24, 0.46)
         } else {
-            Color::srgba(0.78, 0.78, 0.82, 0.35)
+            Color::srgba(0.42, 0.58, 0.64, 0.24)
         };
 
         gizmos.rect(
@@ -72,9 +72,9 @@ pub fn static_world_overlay_system(
 fn zone_color(kind: ZoneKind) -> Color {
     match kind {
         ZoneKind::Resource => Color::srgb(0.18, 0.78, 0.26),
-        ZoneKind::Rest => Color::srgb(0.24, 0.42, 0.94),
-        ZoneKind::Neutral => Color::srgb(0.65, 0.65, 0.68),
-        ZoneKind::Hazard => Color::srgb(0.9, 0.22, 0.14),
+        ZoneKind::Rest => Color::srgb(0.36, 0.50, 1.0),
+        ZoneKind::Neutral => Color::srgb(0.58, 0.66, 0.68),
+        ZoneKind::Hazard => Color::srgb(1.0, 0.28, 0.18),
     }
 }
 
@@ -85,13 +85,13 @@ fn draw_agent_need_bars(gizmos: &mut Gizmos, position: Vec3, needs: &Needs, stat
         origin,
         needs.hunger,
         Color::srgb(0.18, 0.78, 0.26),
-        Color::srgb(0.92, 0.24, 0.16),
+        Color::srgb(1.0, 0.30, 0.18),
     );
     draw_bar(
         gizmos,
         origin + Vec3::Y * 0.14,
         needs.fatigue,
-        Color::srgb(0.24, 0.42, 0.94),
+        Color::srgb(0.36, 0.50, 1.0),
         Color::srgb(0.95, 0.76, 0.20),
     );
 
@@ -134,11 +134,11 @@ fn draw_selected_highlight(gizmos: &mut Gizmos, position: Vec3) {
 
 fn agent_state_color(state: StateKind) -> Color {
     match state {
-        StateKind::Idle => Color::srgb(0.72, 0.74, 0.78),
-        StateKind::Exploring | StateKind::MovingToTarget => Color::srgb(0.24, 0.72, 0.86),
-        StateKind::Eating => Color::srgb(0.36, 0.82, 0.38),
-        StateKind::Resting => Color::srgb(0.38, 0.52, 0.95),
-        StateKind::Fleeing => Color::srgb(0.92, 0.28, 0.20),
+        StateKind::Idle => Color::srgb(0.70, 0.77, 0.80),
+        StateKind::Exploring | StateKind::MovingToTarget => Color::srgb(0.24, 0.82, 0.92),
+        StateKind::Eating => Color::srgb(0.45, 0.90, 0.52),
+        StateKind::Resting => Color::srgb(0.50, 0.62, 1.0),
+        StateKind::Fleeing => Color::srgb(1.0, 0.34, 0.24),
     }
 }
 

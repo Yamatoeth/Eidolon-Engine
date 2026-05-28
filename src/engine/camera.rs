@@ -1,9 +1,11 @@
 //! Camera system — orbit camera with mouse input
 
-use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
+use std::f32::consts::FRAC_PI_2;
 
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
+
+use crate::engine::render::WORLD_PLANE_CENTER;
 
 /// Orbit camera component
 #[derive(Component)]
@@ -25,10 +27,10 @@ pub struct OrbitCamera {
 impl Default for OrbitCamera {
     fn default() -> Self {
         Self {
-            distance: 60.0,
-            yaw: 0.0,
-            pitch: FRAC_PI_4,
-            target: Vec3::ZERO,
+            distance: 82.0,
+            yaw: -0.55,
+            pitch: 0.68,
+            target: WORLD_PLANE_CENTER,
             rotation_speed: 0.005,
             zoom_speed: 5.0,
         }
@@ -101,8 +103,8 @@ mod tests {
         let camera = OrbitCamera::default();
         let position = camera.position();
 
-        assert!((position.x - 0.0).abs() < f32::EPSILON);
+        assert!(position.x < camera.target.x);
         assert!(position.y > 0.0);
-        assert!(position.z > 0.0);
+        assert!(position.z > camera.target.z);
     }
 }

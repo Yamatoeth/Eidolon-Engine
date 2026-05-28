@@ -81,9 +81,11 @@ fn spawn_zone(
     zone: &crate::scenarios::loader::ZoneConfig,
 ) {
     let material = materials.add(StandardMaterial {
-        base_color: zone_color(zone.kind),
+        base_color: zone_fill_color(zone.kind),
         alpha_mode: AlphaMode::Blend,
-        perceptual_roughness: 1.0,
+        perceptual_roughness: 0.96,
+        metallic: 0.0,
+        reflectance: 0.08,
         ..default()
     });
 
@@ -117,8 +119,11 @@ fn spawn_resource_nodes(
 
     let mesh = meshes.add(Sphere::new(RESOURCE_NODE_RADIUS));
     let material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.85, 0.52, 0.18),
-        perceptual_roughness: 0.75,
+        base_color: Color::srgb(1.0, 0.64, 0.24),
+        emissive: LinearRgba::rgb(0.35, 0.18, 0.04),
+        perceptual_roughness: 0.48,
+        metallic: 0.05,
+        reflectance: 0.32,
         ..default()
     });
     let placement_radius = (zone.radius * 0.45).max(RESOURCE_NODE_RADIUS * 2.0);
@@ -210,7 +215,9 @@ fn spawn_agent_entity(
 ) -> Entity {
     let material = materials.add(StandardMaterial {
         base_color: agent_color(StateKind::Idle),
-        perceptual_roughness: 0.65,
+        perceptual_roughness: 0.42,
+        metallic: 0.03,
+        reflectance: 0.38,
         ..default()
     });
     let entity = commands
@@ -299,19 +306,19 @@ fn clustered_agent_position(index: u32, sim_config: &SimulationConfig) -> Vec3 {
 #[must_use]
 pub fn agent_color(state: StateKind) -> Color {
     match state {
-        StateKind::Idle => Color::srgb(0.72, 0.74, 0.78),
-        StateKind::Exploring | StateKind::MovingToTarget => Color::srgb(0.24, 0.72, 0.86),
-        StateKind::Eating => Color::srgb(0.36, 0.82, 0.38),
-        StateKind::Resting => Color::srgb(0.38, 0.52, 0.95),
-        StateKind::Fleeing => Color::srgb(0.92, 0.28, 0.20),
+        StateKind::Idle => Color::srgb(0.70, 0.77, 0.80),
+        StateKind::Exploring | StateKind::MovingToTarget => Color::srgb(0.24, 0.82, 0.92),
+        StateKind::Eating => Color::srgb(0.45, 0.90, 0.52),
+        StateKind::Resting => Color::srgb(0.50, 0.62, 1.0),
+        StateKind::Fleeing => Color::srgb(1.0, 0.34, 0.24),
     }
 }
 
-fn zone_color(kind: ZoneKind) -> Color {
+fn zone_fill_color(kind: ZoneKind) -> Color {
     match kind {
-        ZoneKind::Resource => Color::srgba(0.18, 0.62, 0.28, 0.32),
-        ZoneKind::Rest => Color::srgba(0.18, 0.38, 0.9, 0.28),
-        ZoneKind::Neutral => Color::srgba(0.58, 0.58, 0.58, 0.22),
-        ZoneKind::Hazard => Color::srgba(0.86, 0.18, 0.12, 0.30),
+        ZoneKind::Resource => Color::srgba(0.15, 0.72, 0.42, 0.24),
+        ZoneKind::Rest => Color::srgba(0.22, 0.42, 0.95, 0.22),
+        ZoneKind::Neutral => Color::srgba(0.58, 0.63, 0.65, 0.18),
+        ZoneKind::Hazard => Color::srgba(0.90, 0.18, 0.12, 0.26),
     }
 }
