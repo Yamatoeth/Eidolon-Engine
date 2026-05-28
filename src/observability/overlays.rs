@@ -2,11 +2,21 @@
 
 use bevy::prelude::*;
 
-use crate::simulation::{SpatialGrid, Zone, ZoneKind};
+use crate::ai::{AIDebugInfo, DecisionOutput};
+use crate::simulation::{Agent, AgentState, Needs, SpatialGrid, StateKind, Zone, ZoneKind};
 
-/// Draw Phase 2 zone radii and populated spatial cells.
+type AgentOverlayItem<'a> = (
+    &'a Transform,
+    &'a Needs,
+    &'a AgentState,
+    Option<&'a DecisionOutput>,
+    Option<&'a AIDebugInfo>,
+);
+
+/// Draw static world overlays plus Phase 3 agent need/state markers.
 pub fn static_world_overlay_system(
     zone_query: Query<(&Transform, &Zone)>,
+    agent_query: Query<AgentOverlayItem<'_>, With<Agent>>,
     spatial_grid: Res<SpatialGrid>,
     mut gizmos: Gizmos,
 ) {
@@ -40,6 +50,13 @@ pub fn static_world_overlay_system(
             color,
         );
     }
+
+    for (transform, needs, state, decision, debug) in &agent_query {
+        draw_agent_need_bars(&mut gizmos, transform.translation, needs, state.current);
+        if let (Some(decision), Some(debug)) = (decision, debug) {
+            draw_ai_score_bars(&mut gizmos, transform.translation, decision, debug);
+        }
+    }
 }
 
 fn zone_color(kind: ZoneKind) -> Color {
@@ -48,5 +65,80 @@ fn zone_color(kind: ZoneKind) -> Color {
         ZoneKind::Rest => Color::srgb(0.24, 0.42, 0.94),
         ZoneKind::Neutral => Color::srgb(0.65, 0.65, 0.68),
         ZoneKind::Hazard => Color::srgb(0.9, 0.22, 0.14),
+    }
+}
+
+fn draw_agent_need_bars(gizmos: &mut Gizmos, position: Vec3, needs: &Needs, state: StateKind) {
+    let origin = position + Vec3::new(-0.45, 1.0, 0.0);
+    draw_bar(
+        gizmos,
+        origin,
+        needs.hunger,
+        Color::srgb(0.18, 0.78, 0.26),
+        Color::srgb(0.92, 0.24, 0.16),
+    );
+    draw_bar(
+        gizmos,
+        origin + Vec3::Y * 0.14,
+        needs.fatigue,
+        Color::srgb(0.24, 0.42, 0.94),
+        Color::srgb(0.95, 0.76, 0.20),
+    );
+
+    gizmos.circle(
+        Isometry3d::new(
+            position + Vec3::Y * 1.18,
+            Quat::from_rotation_arc(Vec3::Z, Vec3::Y),
+        ),
+        0.5,
+        agent_state_color(state),
+    );
+}
+
+fn draw_bar(gizmos: &mut Gizmos, origin: Vec3, value: f32, low_color: Color, high_color: Color) {
+    let width = 0.9;
+    let clamped = value.clamp(0.0, 1.0);
+    let end = origin + Vec3::X * width;
+    let fill_end = origin + Vec3::X * (width * clamped);
+
+    let fill_color = if clamped >= 0.7 {
+        high_color
+    } else {
+        low_color
+    };
+
+    gizmos.line(origin, end, Color::srgba(0.05, 0.05, 0.05, 0.9));
+    gizmos.line(origin, fill_end, fill_color);
+}
+
+fn agent_state_color(state: StateKind) -> Color {
+    match state {
+        StateKind::Idle => Color::srgb(0.72, 0.74, 0.78),
+        StateKind::Exploring | StateKind::MovingToTarget => Color::srgb(0.24, 0.72, 0.86),
+        StateKind::Eating => Color::srgb(0.36, 0.82, 0.38),
+        StateKind::Resting => Color::srgb(0.38, 0.52, 0.95),
+        StateKind::Fleeing => Color::srgb(0.92, 0.28, 0.20),
+    }
+}
+
+fn draw_ai_score_bars(
+    gizmos: &mut Gizmos,
+    position: Vec3,
+    decision: &DecisionOutput,
+    debug: &AIDebugInfo,
+) {
+    let base = position + Vec3::new(-0.45, 1.38, 0.0);
+    for (index, (action, score)) in debug.last_scores.iter().take(5).enumerate() {
+        let y = index as f32 * 0.08;
+        let color = if *action == decision.action {
+            Color::srgb(0.98, 0.92, 0.28)
+        } else {
+            Color::srgba(0.78, 0.82, 0.88, 0.75)
+        };
+        gizmos.line(
+            base + Vec3::Y * y,
+            base + Vec3::new(0.75 * score.clamp(0.0, 1.0), y, 0.0),
+            color,
+        );
     }
 }

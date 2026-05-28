@@ -193,6 +193,12 @@ pub struct SimulationConfig {
     pub needs_decay_rates: NeedsDecayRates,
     pub spatial_grid_cell_size: f32,
     pub seed: u64,
+    pub global_decay_multiplier: f32,
+    pub global_regen_multiplier: f32,
+    pub agent_move_speed: f32,
+    pub random_walk_turn_secs: f32,
+    pub agent_collider_radius: f32,
+    pub agent_visual_height: f32,
 }
 
 /// AI configuration (hot-reloadable)
@@ -201,6 +207,14 @@ pub struct AIConfig {
     pub utility_weights: UtilityWeights,
     pub decision_interval: f32,  // seconds between agent decisions
     pub perception_radius: f32,
+}
+
+pub struct UtilityWeights {
+    pub eat: f32,
+    pub rest: f32,
+    pub explore: f32,
+    pub collect: f32,
+    pub idle: f32,
 }
 
 /// Global simulation clock (separate from Bevy's Time for determinism)
@@ -216,6 +230,12 @@ pub struct SimulationTime {
 pub struct SpatialGrid {
     // internal: HashMap<GridCell, Vec<Entity>>
     // exposed: query methods only
+}
+
+/// Deterministic random number generator for simulation systems
+#[derive(Resource)]
+pub struct SimRng {
+    // internal: ChaCha8Rng seeded from SimulationConfig.seed
 }
 
 /// Global simulation metrics (written by sim, read by observability)
@@ -370,6 +390,7 @@ pub enum ScenarioEventKind {
 | `agent_state_transition_system` | FixedUpdate (Apply) | `DecisionOutput` | `AgentState` |
 | `agent_movement_system` | FixedUpdate (Apply) | `DecisionOutput`, `AgentState` | `Transform`, `Velocity` |
 | `resource_consume_system` | FixedUpdate (Apply) | `DecisionOutput`, `AgentState` | `Needs`, `ResourceNode` → events |
+| `rest_recovery_system` | FixedUpdate (Apply) | `AgentState` | `Needs` |
 | `agent_death_system` | FixedUpdate (Post) | `Needs` | despawn → `AgentDied` events |
 | `metrics_update_system` | FixedUpdate (Post) | `Needs`, agent query | `SimulationMetrics` |
 
@@ -402,7 +423,8 @@ pub enum ScenarioEventKind {
 
 | Archetype | Required Components |
 |---|---|
-| **Agent** | `Agent`, `Needs`, `AgentState`, `DecisionOutput`, `Transform`, `Velocity`, `Collider` |
+| **Agent (Phase 3)** | `Agent`, `Needs`, `AgentState`, `Transform`, `Velocity`, `Collider` |
+| **Agent (Phase 4+)** | + `DecisionOutput` |
 | **Resource Node** | `ResourceNode`, `Transform`, `Collider` |
 | **Zone** | `Zone`, `Transform` |
 | **Agent (debug)** | + `AIDebugInfo`, optionally `AgentMemory` |

@@ -15,4 +15,8 @@
     seed: 42,
     global_decay_multiplier: 1.0,
     global_regen_multiplier: 1.0,
+    agent_move_speed: 4.0,
+    random_walk_turn_secs: 1.25,
+    agent_collider_radius: 0.45,
+    agent_visual_height: 0.9,
 )

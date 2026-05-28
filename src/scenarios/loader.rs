@@ -6,7 +6,7 @@ use std::path::Path;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::simulation::{NeedsDecayRates, SimulationConfig, ZoneKind};
+use crate::simulation::{NeedsDecayRates, SimRng, SimulationConfig, ZoneKind};
 
 /// Default scenario loaded at startup.
 pub const DEFAULT_SCENARIO_PATH: &str = "assets/scenarios/equilibrium.ron";
@@ -118,6 +118,7 @@ impl ScenarioConfig {
             seed: self.seed,
             global_decay_multiplier: self.sim_overrides.global_decay_multiplier,
             global_regen_multiplier: self.sim_overrides.global_regen_multiplier,
+            ..SimulationConfig::default()
         }
     }
 }
@@ -142,10 +143,12 @@ pub fn load_scenario_from_path(path: impl AsRef<Path>) -> anyhow::Result<Scenari
 pub fn load_default_scenario_system(
     mut commands: Commands,
     mut sim_config: ResMut<SimulationConfig>,
+    mut sim_rng: ResMut<SimRng>,
 ) {
     match load_scenario_from_path(DEFAULT_SCENARIO_PATH) {
         Ok(config) => {
             *sim_config = config.simulation_config();
+            sim_rng.reseed(config.seed);
             commands.insert_resource(ActiveScenario { config });
         },
         Err(error) => {

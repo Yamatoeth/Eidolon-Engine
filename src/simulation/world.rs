@@ -61,6 +61,14 @@ pub struct SimulationConfig {
     pub global_decay_multiplier: f32,
     /// Scenario-wide resource regeneration scalar.
     pub global_regen_multiplier: f32,
+    /// Agent movement speed in world units per second.
+    pub agent_move_speed: f32,
+    /// Seconds between random-walk direction changes.
+    pub random_walk_turn_secs: f32,
+    /// Agent collider radius in world units.
+    pub agent_collider_radius: f32,
+    /// Agent visual center height above the world plane.
+    pub agent_visual_height: f32,
 }
 
 impl Default for SimulationConfig {
@@ -78,6 +86,10 @@ impl Default for SimulationConfig {
             seed: 42,
             global_decay_multiplier: 1.0,
             global_regen_multiplier: 1.0,
+            agent_move_speed: 4.0,
+            random_walk_turn_secs: 1.25,
+            agent_collider_radius: 0.45,
+            agent_visual_height: 0.9,
         }
     }
 }

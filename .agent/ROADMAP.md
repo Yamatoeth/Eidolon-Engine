@@ -70,16 +70,16 @@ Each phase must produce a **working, demonstrable state**. No phase ends with br
 
 ### Tasks
 
-- [ ] `Agent`, `Needs`, `AgentState`, `Velocity` components
-- [ ] Agent entity spawning (from `SimulationConfig`)
-- [ ] Agent visual (capsule mesh + color by state)
-- [ ] `needs_decay_system` — hunger/fatigue degrade over time
-- [ ] `AgentDied` event + entity despawn
-- [ ] `NeedThresholdReached` event
-- [ ] Random movement system (no AI yet — random walk)
-- [ ] Agent count display in UI
-- [ ] Debug overlay: agent state labels (hunger bar above head)
-- [ ] Inspector panel: list agents with their needs values
+- [x] `Agent`, `Needs`, `AgentState`, `Velocity` components
+- [x] Agent entity spawning (from `SimulationConfig`)
+- [x] Agent visual (capsule mesh + color by state)
+- [x] `needs_decay_system` — hunger/fatigue degrade over time
+- [x] `AgentDied` event + entity despawn
+- [x] `NeedThresholdReached` event
+- [x] Random movement system (no AI yet — random walk)
+- [x] Agent count display in UI
+- [x] Debug overlay: agent state labels (hunger bar above head)
+- [x] Inspector panel: list agents with their needs values
 
 **Deliverable:** Agents wander randomly. They starve and disappear. You can watch their needs bars deplete in real time.
 
@@ -90,18 +90,18 @@ Each phase must produce a **working, demonstrable state**. No phase ends with br
 
 ### Tasks
 
-- [ ] `AIConfig` resource (weights, perception radius, decision interval)
-- [ ] `PerceptionData` struct + `ai_perception_system`
-- [ ] `AIDebugInfo` component
-- [ ] Utility scoring functions: `score_eat`, `score_rest`, `score_explore`, `score_idle`
-- [ ] `ai_scoring_system` → writes `DecisionOutput`
-- [ ] `agent_state_transition_system` → reads `DecisionOutput`
-- [ ] `agent_movement_system` — move toward `DecisionOutput.target_position`
-- [ ] `resource_consume_system` — consume resource when agent arrives
-- [ ] `resource_regen_system` — resources slowly refill
-- [ ] `ResourceConsumed`, `ResourceDepleted`, `ResourceReplenished` events
-- [ ] Debug overlay: AI score bars for selected agent
-- [ ] Inspector: show `DecisionOutput` with action and score
+- [x] `AIConfig` resource (weights, perception radius, decision interval)
+- [x] `PerceptionData` struct + `ai_perception_system`
+- [x] `AIDebugInfo` component
+- [x] Utility scoring functions: `score_eat`, `score_rest`, `score_explore`, `score_idle`
+- [x] `ai_scoring_system` → writes `DecisionOutput`
+- [x] `agent_state_transition_system` → reads `DecisionOutput`
+- [x] `agent_movement_system` — move toward `DecisionOutput.target_position`
+- [x] `resource_consume_system` — consume resource when agent arrives
+- [x] `resource_regen_system` — resources slowly refill
+- [x] `ResourceConsumed`, `ResourceDepleted`, `ResourceReplenished` events
+- [x] Debug overlay: AI score bars for selected agent
+- [x] Inspector: show `DecisionOutput` with action and score
 
 **Deliverable:** Agents navigate to food, eat, seek rest zones. Clear emergent clustering around resources when hungry.
 
