@@ -1,0 +1,42 @@
+// Scenario: Controlled Overpopulation
+// Population grows through timed events, forcing migration and competition.
+
+(
+    name: "Controlled Overpopulation",
+    description: "Starts sparse, then timed events add population pressure.",
+    seed: 123,
+    world_size: (100.0, 100.0),
+
+    agents: (
+        count: 10,
+        distribution: Uniform,
+    ),
+
+    zones: [
+        (kind: Resource, center: (20.0, 0.0, 20.0), radius: 12.0),
+        (kind: Resource, center: (80.0, 0.0, 20.0), radius: 12.0),
+        (kind: Resource, center: (20.0, 0.0, 80.0), radius: 12.0),
+        (kind: Resource, center: (80.0, 0.0, 80.0), radius: 12.0),
+        (kind: Rest, center: (50.0, 0.0, 50.0), radius: 14.0),
+    ],
+
+    resources: (
+        nodes_per_resource_zone: 3,
+        initial_amount_fraction: 0.85,
+        regen_rate: 0.45,
+    ),
+
+    sim_overrides: (
+        global_decay_multiplier: 1.0,
+        global_regen_multiplier: 1.0,
+    ),
+
+    events: [
+        (at: 5.0, kind: "SpawnAgents(5)"),
+        (at: 10.0, kind: "SpawnAgents(5)"),
+        (at: 15.0, kind: "SpawnAgents(5)"),
+        (at: 20.0, kind: "SpawnAgents(5)"),
+        (at: 25.0, kind: "SpawnAgents(5)"),
+        (at: 60.0, kind: "SetDecayMultiplier(1.3)"),
+    ],
+)

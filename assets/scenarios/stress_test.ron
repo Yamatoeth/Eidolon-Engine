@@ -1,0 +1,39 @@
+// Scenario: Stress Test
+// High entity count for simulation and observability performance checks.
+
+(
+    name: "Stress Test",
+    description: "Dense population and many resources for profiling.",
+    seed: 202,
+    world_size: (120.0, 120.0),
+
+    agents: (
+        count: 200,
+        distribution: Random,
+    ),
+
+    zones: [
+        (kind: Resource, center: (15.0, 0.0, 15.0), radius: 10.0),
+        (kind: Resource, center: (45.0, 0.0, 15.0), radius: 10.0),
+        (kind: Resource, center: (75.0, 0.0, 15.0), radius: 10.0),
+        (kind: Resource, center: (105.0, 0.0, 15.0), radius: 10.0),
+        (kind: Resource, center: (15.0, 0.0, 105.0), radius: 10.0),
+        (kind: Resource, center: (45.0, 0.0, 105.0), radius: 10.0),
+        (kind: Resource, center: (75.0, 0.0, 105.0), radius: 10.0),
+        (kind: Resource, center: (105.0, 0.0, 105.0), radius: 10.0),
+        (kind: Rest, center: (60.0, 0.0, 60.0), radius: 18.0),
+    ],
+
+    resources: (
+        nodes_per_resource_zone: 4,
+        initial_amount_fraction: 1.0,
+        regen_rate: 0.75,
+    ),
+
+    sim_overrides: (
+        global_decay_multiplier: 0.8,
+        global_regen_multiplier: 1.2,
+    ),
+
+    events: [],
+)

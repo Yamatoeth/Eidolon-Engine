@@ -15,8 +15,8 @@ use crate::simulation::{
 
 const RESOURCE_NODE_MAX_AMOUNT: f32 = 100.0;
 const RESOURCE_NODE_RADIUS: f32 = 1.0;
-const AGENT_CAPSULE_RADIUS: f32 = 0.35;
-const AGENT_CAPSULE_LENGTH: f32 = 1.0;
+pub const AGENT_CAPSULE_RADIUS: f32 = 0.35;
+pub const AGENT_CAPSULE_LENGTH: f32 = 1.0;
 
 /// Marker for entities spawned from a scenario load.
 #[derive(Component, Clone, Copy, Debug)]
@@ -63,7 +63,7 @@ pub fn spawn_scenario_world(
         }
     }
 
-    spawn_agents(
+    spawn_initial_agents(
         commands,
         meshes,
         materials,
@@ -148,7 +148,7 @@ fn spawn_resource_nodes(
     }
 }
 
-fn spawn_agents(
+fn spawn_initial_agents(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
@@ -161,35 +161,79 @@ fn spawn_agents(
 
     for index in 0..sim_config.initial_agent_count {
         let position = agent_spawn_position(index, scenario, sim_config, &mut rng);
-        let material = materials.add(StandardMaterial {
-            base_color: agent_color(StateKind::Idle),
-            perceptual_roughness: 0.65,
-            ..default()
-        });
-        let entity = commands
-            .spawn((
-                Agent {
-                    id: AgentId(u64::from(index)),
-                    age: 0.0,
-                },
-                Needs::default(),
-                AgentState::default(),
-                Velocity::default(),
-                Collider {
-                    radius: sim_config.agent_collider_radius,
-                },
-                ScenarioSpawned,
-                Transform::from_translation(position),
-                Mesh3d(mesh.clone()),
-                MeshMaterial3d(material),
-            ))
-            .id();
-
-        agent_spawned_events.send(AgentSpawned {
-            agent: entity,
+        spawn_agent_entity(
+            commands,
+            mesh.clone(),
+            materials,
+            AgentId(u64::from(index)),
             position,
-        });
+            sim_config.agent_collider_radius,
+            agent_spawned_events,
+        );
     }
+}
+
+/// Spawn one agent at a world position.
+pub fn spawn_agent_at_position(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    agent_id: AgentId,
+    position: Vec3,
+    sim_config: &SimulationConfig,
+    agent_spawned_events: &mut EventWriter<AgentSpawned>,
+) {
+    let mesh = meshes.add(Capsule3d::new(AGENT_CAPSULE_RADIUS, AGENT_CAPSULE_LENGTH));
+    spawn_agent_entity(
+        commands,
+        mesh,
+        materials,
+        agent_id,
+        Vec3::new(
+            position.x.clamp(0.0, sim_config.world_size.x),
+            sim_config.agent_visual_height,
+            position.z.clamp(0.0, sim_config.world_size.y),
+        ),
+        sim_config.agent_collider_radius,
+        agent_spawned_events,
+    );
+}
+
+fn spawn_agent_entity(
+    commands: &mut Commands,
+    mesh: Handle<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    id: AgentId,
+    position: Vec3,
+    collider_radius: f32,
+    agent_spawned_events: &mut EventWriter<AgentSpawned>,
+) -> Entity {
+    let material = materials.add(StandardMaterial {
+        base_color: agent_color(StateKind::Idle),
+        perceptual_roughness: 0.65,
+        ..default()
+    });
+    let entity = commands
+        .spawn((
+            Agent { id, age: 0.0 },
+            Needs::default(),
+            AgentState::default(),
+            Velocity::default(),
+            Collider {
+                radius: collider_radius,
+            },
+            ScenarioSpawned,
+            Transform::from_translation(position),
+            Mesh3d(mesh),
+            MeshMaterial3d(material),
+        ))
+        .id();
+
+    agent_spawned_events.send(AgentSpawned {
+        agent: entity,
+        position,
+    });
+    entity
 }
 
 /// Keep agent material colors synchronized with their current simulation state.

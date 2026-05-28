@@ -14,6 +14,10 @@ pub enum EngineAction {
     ResetSimulationTime,
     /// Toggle the entity inspector panel.
     ToggleInspector,
+    /// Toggle the event timeline panel.
+    ToggleTimeline,
+    /// Toggle in-world observability overlays.
+    ToggleOverlays,
     /// Toggle the engine debug grid overlay.
     ToggleDebugGrid,
 }
@@ -38,6 +42,8 @@ impl Default for InputMap {
                 (KeyCode::Space, EngineAction::TogglePause),
                 (KeyCode::KeyR, EngineAction::ResetSimulationTime),
                 (KeyCode::F1, EngineAction::ToggleInspector),
+                (KeyCode::F2, EngineAction::ToggleTimeline),
+                (KeyCode::F3, EngineAction::ToggleOverlays),
                 (KeyCode::KeyG, EngineAction::ToggleDebugGrid),
             ],
         }
@@ -85,7 +91,9 @@ pub fn apply_engine_actions(
             EngineAction::TogglePause => sim_time.toggle_pause(),
             EngineAction::ResetSimulationTime => *sim_time = SimulationTime::new(),
             EngineAction::ToggleDebugGrid => debug_grid.enabled = !debug_grid.enabled,
-            EngineAction::ToggleInspector => {},
+            EngineAction::ToggleInspector
+            | EngineAction::ToggleTimeline
+            | EngineAction::ToggleOverlays => {},
         }
     }
 }
@@ -107,6 +115,14 @@ mod tests {
         assert_eq!(
             input_map.actions_for_key(KeyCode::F1).collect::<Vec<_>>(),
             vec![EngineAction::ToggleInspector]
+        );
+        assert_eq!(
+            input_map.actions_for_key(KeyCode::F2).collect::<Vec<_>>(),
+            vec![EngineAction::ToggleTimeline]
+        );
+        assert_eq!(
+            input_map.actions_for_key(KeyCode::F3).collect::<Vec<_>>(),
+            vec![EngineAction::ToggleOverlays]
         );
         assert_eq!(
             input_map.actions_for_key(KeyCode::KeyG).collect::<Vec<_>>(),

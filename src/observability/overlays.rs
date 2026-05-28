@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 
 use crate::ai::{AIDebugInfo, DecisionOutput};
+use crate::observability::inspector::{InspectorSelected, ObservabilityConfig};
 use crate::simulation::{Agent, AgentState, Needs, SpatialGrid, StateKind, Zone, ZoneKind};
 
 type AgentOverlayItem<'a> = (
@@ -11,6 +12,7 @@ type AgentOverlayItem<'a> = (
     &'a AgentState,
     Option<&'a DecisionOutput>,
     Option<&'a AIDebugInfo>,
+    Option<&'a InspectorSelected>,
 );
 
 /// Draw static world overlays plus Phase 3 agent need/state markers.
@@ -18,8 +20,13 @@ pub fn static_world_overlay_system(
     zone_query: Query<(&Transform, &Zone)>,
     agent_query: Query<AgentOverlayItem<'_>, With<Agent>>,
     spatial_grid: Res<SpatialGrid>,
+    config: Res<ObservabilityConfig>,
     mut gizmos: Gizmos,
 ) {
+    if !config.overlays_enabled {
+        return;
+    }
+
     for (transform, zone) in &zone_query {
         gizmos.circle(
             Isometry3d::new(
@@ -51,8 +58,11 @@ pub fn static_world_overlay_system(
         );
     }
 
-    for (transform, needs, state, decision, debug) in &agent_query {
+    for (transform, needs, state, decision, debug, selected) in &agent_query {
         draw_agent_need_bars(&mut gizmos, transform.translation, needs, state.current);
+        if selected.is_some() {
+            draw_selected_highlight(&mut gizmos, transform.translation);
+        }
         if let (Some(decision), Some(debug)) = (decision, debug) {
             draw_ai_score_bars(&mut gizmos, transform.translation, decision, debug);
         }
@@ -109,6 +119,17 @@ fn draw_bar(gizmos: &mut Gizmos, origin: Vec3, value: f32, low_color: Color, hig
 
     gizmos.line(origin, end, Color::srgba(0.05, 0.05, 0.05, 0.9));
     gizmos.line(origin, fill_end, fill_color);
+}
+
+fn draw_selected_highlight(gizmos: &mut Gizmos, position: Vec3) {
+    gizmos.circle(
+        Isometry3d::new(
+            position + Vec3::Y * 0.04,
+            Quat::from_rotation_arc(Vec3::Z, Vec3::Y),
+        ),
+        0.9,
+        Color::srgb(1.0, 0.92, 0.18),
+    );
 }
 
 fn agent_state_color(state: StateKind) -> Color {

@@ -24,11 +24,27 @@ impl Plugin for ObservabilityPlugin {
         {
             app.add_plugins((EguiPlugin, DefaultInspectorConfigPlugin))
                 .init_resource::<inspector::ObservabilityConfig>()
+                .init_resource::<inspector::InspectorState>()
+                .init_resource::<timeline::EventTimeline>()
+                .init_resource::<replay::ReplayBuffer>()
                 .add_systems(
                     Update,
                     (
                         inspector::handle_observability_actions,
+                        inspector::click_to_inspect_system,
+                        inspector::sync_inspector_selection_system,
                         inspector::inspector_ui_system,
+                        inspector::scenario_selector_ui_system,
+                        timeline::timeline_ui_system,
+                        replay::replay_ui_system,
+                    ),
+                )
+                .add_systems(
+                    FixedUpdate,
+                    (
+                        timeline::timeline_record_agents_system,
+                        timeline::timeline_record_resources_system,
+                        replay::replay_record_system,
                     ),
                 );
         }

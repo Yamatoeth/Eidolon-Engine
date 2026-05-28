@@ -112,19 +112,19 @@ Each phase must produce a **working, demonstrable state**. No phase ends with br
 
 ### Tasks
 
-- [ ] Inspector panel: component filter, entity list, detail view
-- [ ] Custom egui widgets: needs progress bars, AI score bar chart
-- [ ] `InspectorSelected` component + 3D highlight rendering
-- [ ] Event timeline panel: event log with timestamps
-- [ ] Timeline filter by event type
-- [ ] Timeline density graph
-- [ ] `EventTimeline` resource with rolling buffer
-- [ ] All simulation events wired to timeline
-- [ ] Replay recording system (`ReplayBuffer`)
-- [ ] Replay playback controls UI
-- [ ] Seed replay (restart from same seed)
-- [ ] Frame replay scrubbing
-- [ ] All debug overlays from OBSERVABILITY.md
+- [x] Inspector panel: component filter, entity list, detail view
+- [x] Custom egui widgets: needs progress bars, AI score bar chart
+- [x] `InspectorSelected` component + 3D highlight rendering
+- [x] Event timeline panel: event log with timestamps
+- [x] Timeline filter by event type
+- [x] Timeline density graph
+- [x] `EventTimeline` resource with rolling buffer
+- [x] All simulation events wired to timeline
+- [x] Replay recording system (`ReplayBuffer`)
+- [x] Replay playback controls UI
+- [x] Seed replay (restart from same seed)
+- [x] Frame replay scrubbing
+- [x] All debug overlays from OBSERVABILITY.md
 
 **Deliverable:** Full observability suite functional. Can inspect any entity, view event history, replay any run.
 
@@ -135,18 +135,18 @@ Each phase must produce a **working, demonstrable state**. No phase ends with br
 
 ### Tasks
 
-- [ ] Scenario selector UI panel
-- [ ] Scenario loading/switching without restart
-- [ ] `scarcity.ron` — collapse scenario
-- [ ] `overpopulation.ron` — migration scenario
-- [ ] `stress_test.ron` — benchmark scenario
-- [ ] `island.ron` — concentrated competition scenario
-- [ ] Timed scenario events system
-- [ ] Player interaction: click-to-inspect entity in 3D viewport
-- [ ] Player interaction: spawn agent at clicked position
-- [ ] Basic UI polish (fonts, layout, color theme)
+- [x] Scenario selector UI panel
+- [x] Scenario loading/switching without restart
+- [x] `scarcity.ron` — collapse scenario
+- [x] `overpopulation.ron` — migration scenario
+- [x] `stress_test.ron` — benchmark scenario
+- [x] `island.ron` — concentrated competition scenario
+- [x] Timed scenario events system
+- [x] Player interaction: click-to-inspect entity in 3D viewport
+- [x] Player interaction: spawn agent at clicked position
+- [x] Basic UI polish (fonts, layout, color theme)
 - [ ] Performance profiling pass — meet observability budget targets
-- [ ] Determinism test suite in `tests/determinism/`
+- [x] Determinism test suite in `tests/determinism/`
 
 **Deliverable:** All scenarios runnable. Full demo circuit possible. Project is portfolio-ready.
 

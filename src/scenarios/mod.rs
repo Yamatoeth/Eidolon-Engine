@@ -13,8 +13,17 @@ pub struct ScenariosPlugin;
 
 impl Plugin for ScenariosPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, loader::load_default_scenario_system)
+        app.add_event::<loader::ScenarioLoadRequested>()
+            .add_systems(Startup, loader::load_default_scenario_system)
             .add_systems(PostStartup, builder::spawn_active_scenario_system)
-            .add_systems(Update, builder::agent_visual_state_system);
+            .add_systems(
+                Update,
+                (
+                    builder::agent_visual_state_system,
+                    loader::player_spawn_agent_system,
+                    loader::apply_scenario_load_requests_system,
+                ),
+            )
+            .add_systems(FixedUpdate, loader::timed_scenario_events_system);
     }
 }

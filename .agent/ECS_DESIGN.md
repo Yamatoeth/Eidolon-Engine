@@ -163,6 +163,10 @@ pub struct AIDebugInfo {
 pub struct DebugLabel {
     pub text: String,
 }
+
+/// Marks the entity selected in the inspector
+#[derive(Component)]
+pub struct InspectorSelected;
 ```
 
 ---
@@ -255,6 +259,13 @@ pub struct ReplayBuffer {
     pub is_recording: bool,
     pub is_replaying: bool,
     pub playback_index: usize,
+}
+
+/// Rolling event timeline
+#[derive(Resource)]
+pub struct EventTimeline {
+    pub events: VecDeque<TimelineEvent>,
+    pub max_entries: usize,
 }
 
 /// Observability feature flags (runtime toggleable)
@@ -406,9 +417,12 @@ pub enum ScenarioEventKind {
 | System | Schedule | Reads | Writes |
 |---|---|---|---|
 | `inspector_ui_system` | Update | all components (read) | `InspectorSelected` |
-| `timeline_system` | Update | all events (read) | timeline buffer |
+| `timeline_record_agents_system` | FixedUpdate (Post) | agent events | `EventTimeline` |
+| `timeline_record_resources_system` | FixedUpdate (Post) | resource events | `EventTimeline` |
+| `timeline_ui_system` | Update | `EventTimeline` | egui |
 | `overlay_draw_system` | Update | `Transform`, `AIDebugInfo`, `Zone` | Bevy Gizmos |
 | `replay_record_system` | FixedUpdate (Post) | snapshot of all relevant state | `ReplayBuffer` |
+| `replay_ui_system` | Update | `ReplayBuffer` | egui |
 
 ### Scenario Systems
 
@@ -416,6 +430,9 @@ pub enum ScenarioEventKind {
 |---|---|---|---|
 | `load_default_scenario_system` | Startup | `assets/scenarios/equilibrium.ron` | `ActiveScenario`, `SimulationConfig` |
 | `spawn_active_scenario_system` | PostStartup | `ActiveScenario` | `Zone`, `ResourceNode`, `Collider`, visual meshes/materials |
+| `apply_scenario_load_requests_system` | Update | `ScenarioLoadRequested`, `ScenarioCatalog` | despawn/rebuild scenario entities |
+| `timed_scenario_events_system` | FixedUpdate | `ActiveScenario`, `SimulationTime` | timed scenario mutations/spawns |
+| `player_spawn_agent_system` | Update | mouse/camera cursor ray | spawn agent at clicked ground point |
 
 ---
 
