@@ -10,7 +10,11 @@ pub mod memory;
 pub mod utility;
 
 pub use actions::{ActionKind, ActionScore};
-pub use decision::{AIDebugInfo, DecisionOutput, PerceptionData, VisibleResource, VisibleZone};
+pub use decision::{
+    AIDebugInfo, AgentIntent, AgentRole, DecisionOutput, PerceptionData, VisibleResource,
+    VisibleZone,
+};
+pub use memory::{AgentMemory, KnownResource, KnownRestZone};
 pub use utility::{AIConfig, UtilityWeights};
 
 const DEFAULT_AI_CONFIG_PATH: &str = "assets/config/ai.ron";
@@ -26,9 +30,12 @@ impl Plugin for AIPlugin {
                 FixedUpdate,
                 (
                     decision::attach_ai_components_system,
+                    memory::update_agent_memory_system,
+                    memory::share_agent_memory_system,
                     decision::ai_scoring_system,
                 )
                     .chain()
+                    .after(crate::engine::time::update_simulation_time)
                     .after(crate::simulation::spatial::spatial_grid_update_system)
                     .before(crate::simulation::agent::agent_state_transition_system),
             );

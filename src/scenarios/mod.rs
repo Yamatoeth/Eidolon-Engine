@@ -20,6 +20,7 @@ impl Plugin for ScenariosPlugin {
                 Update,
                 (
                     builder::agent_visual_state_system,
+                    builder::carried_resource_visual_system,
                     loader::player_spawn_agent_system,
                     loader::apply_scenario_load_requests_system,
                 ),

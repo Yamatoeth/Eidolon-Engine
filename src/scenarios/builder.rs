@@ -9,18 +9,34 @@ use rand_chacha::ChaCha8Rng;
 
 use crate::scenarios::loader::{ActiveScenario, AgentDistribution, ScenarioConfig};
 use crate::simulation::{
-    Agent, AgentId, AgentSpawned, AgentState, Collider, Needs, ResourceNode, SimulationConfig,
-    StateKind, Velocity, Zone, ZoneId, ZoneKind,
+    Agent, AgentId, AgentSpawned, AgentState, CarriedResource, Collider, Needs, ResourceNode,
+    SimulationConfig, StateKind, Velocity, VillageStore, Zone, ZoneId, ZoneKind,
 };
 
 const RESOURCE_NODE_MAX_AMOUNT: f32 = 100.0;
-const RESOURCE_NODE_RADIUS: f32 = 1.0;
-pub const AGENT_CAPSULE_RADIUS: f32 = 0.35;
-pub const AGENT_CAPSULE_LENGTH: f32 = 1.0;
+const RESOURCE_NODE_RADIUS: f32 = 1.2;
+pub const AGENT_CAPSULE_RADIUS: f32 = 0.42;
+pub const AGENT_CAPSULE_LENGTH: f32 = 1.2;
+
+#[derive(Clone)]
+struct AgentVisualAssets {
+    body_mesh: Handle<Mesh>,
+    head_mesh: Handle<Mesh>,
+    visor_mesh: Handle<Mesh>,
+    leg_mesh: Handle<Mesh>,
+    head_material: Handle<StandardMaterial>,
+    visor_material: Handle<StandardMaterial>,
+    limb_material: Handle<StandardMaterial>,
+}
+
+type AgentCargoVisualQueryItem<'w> = (Entity, Option<&'w CarriedResource>, Option<&'w Children>);
 
 /// Marker for entities spawned from a scenario load.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ScenarioSpawned;
+
+#[derive(Component)]
+pub struct CarriedResourceVisual;
 
 /// Spawn the active scenario's static world entities.
 pub fn spawn_active_scenario_system(
@@ -89,7 +105,7 @@ fn spawn_zone(
         ..default()
     });
 
-    commands.spawn((
+    let mut entity = commands.spawn((
         Zone {
             id,
             kind: zone.kind,
@@ -103,6 +119,11 @@ fn spawn_zone(
         Mesh3d(meshes.add(Cylinder::new(zone.radius, 0.04).mesh().resolution(64))),
         MeshMaterial3d(material),
     ));
+
+    if zone.kind == ZoneKind::Rest {
+        entity.insert(VillageStore::new(zone.radius * 18.0));
+        spawn_village_decor(commands, meshes, materials, zone.center, zone.radius);
+    }
 }
 
 fn spawn_resource_nodes(
@@ -117,13 +138,22 @@ fn spawn_resource_nodes(
         return;
     }
 
-    let mesh = meshes.add(Sphere::new(RESOURCE_NODE_RADIUS));
+    let mesh = meshes.add(Cone::new(0.72, 1.85).mesh().resolution(5));
     let material = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 0.64, 0.24),
-        emissive: LinearRgba::rgb(0.35, 0.18, 0.04),
-        perceptual_roughness: 0.48,
-        metallic: 0.05,
-        reflectance: 0.32,
+        base_color: Color::srgb(0.95, 0.66, 0.32),
+        emissive: LinearRgba::rgb(0.24, 0.12, 0.03),
+        perceptual_roughness: 0.34,
+        metallic: 0.08,
+        reflectance: 0.42,
+        ..default()
+    });
+    let shard_mesh = meshes.add(Cone::new(0.34, 1.15).mesh().resolution(4));
+    let shard_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(1.0, 0.78, 0.44),
+        emissive: LinearRgba::rgb(0.18, 0.10, 0.03),
+        perceptual_roughness: 0.38,
+        metallic: 0.06,
+        reflectance: 0.36,
         ..default()
     });
     let placement_radius = (zone.radius * 0.45).max(RESOURCE_NODE_RADIUS * 2.0);
@@ -136,20 +166,35 @@ fn spawn_resource_nodes(
             angle.sin() * placement_radius,
         );
 
-        commands.spawn((
-            ResourceNode::food(
-                RESOURCE_NODE_MAX_AMOUNT,
-                scenario.resources.initial_amount_fraction,
-                scenario.resources.regen_rate * scenario.sim_overrides.global_regen_multiplier,
-            ),
-            Transform::from_translation(zone.center + offset),
-            Collider {
-                radius: RESOURCE_NODE_RADIUS,
-            },
-            ScenarioSpawned,
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(material.clone()),
-        ));
+        commands
+            .spawn((
+                ResourceNode::food(
+                    RESOURCE_NODE_MAX_AMOUNT,
+                    scenario.resources.initial_amount_fraction,
+                    scenario.resources.regen_rate * scenario.sim_overrides.global_regen_multiplier,
+                ),
+                Transform::from_translation(zone.center + offset),
+                Collider {
+                    radius: RESOURCE_NODE_RADIUS,
+                },
+                ScenarioSpawned,
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(material.clone()),
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Mesh3d(shard_mesh.clone()),
+                    MeshMaterial3d(shard_material.clone()),
+                    Transform::from_xyz(-0.52, -0.18, 0.12)
+                        .with_rotation(Quat::from_rotation_z(0.28)),
+                ));
+                parent.spawn((
+                    Mesh3d(shard_mesh.clone()),
+                    MeshMaterial3d(shard_material.clone()),
+                    Transform::from_xyz(0.46, -0.26, -0.22)
+                        .with_rotation(Quat::from_rotation_z(-0.22)),
+                ));
+            });
     }
 }
 
@@ -161,14 +206,14 @@ fn spawn_initial_agents(
     sim_config: &SimulationConfig,
     agent_spawned_events: &mut EventWriter<AgentSpawned>,
 ) {
-    let mesh = meshes.add(Capsule3d::new(AGENT_CAPSULE_RADIUS, AGENT_CAPSULE_LENGTH));
+    let visuals = create_agent_visual_assets(meshes, materials);
     let mut rng = ChaCha8Rng::seed_from_u64(scenario.seed ^ 0xA6E3_9D8B_05C1_7F42);
 
     for index in 0..sim_config.initial_agent_count {
         let position = agent_spawn_position(index, scenario, sim_config, &mut rng);
         spawn_agent_entity(
             commands,
-            mesh.clone(),
+            &visuals,
             materials,
             AgentId(u64::from(index)),
             position,
@@ -188,10 +233,10 @@ pub fn spawn_agent_at_position(
     sim_config: &SimulationConfig,
     agent_spawned_events: &mut EventWriter<AgentSpawned>,
 ) {
-    let mesh = meshes.add(Capsule3d::new(AGENT_CAPSULE_RADIUS, AGENT_CAPSULE_LENGTH));
+    let visuals = create_agent_visual_assets(meshes, materials);
     spawn_agent_entity(
         commands,
-        mesh,
+        &visuals,
         materials,
         agent_id,
         Vec3::new(
@@ -206,20 +251,14 @@ pub fn spawn_agent_at_position(
 
 fn spawn_agent_entity(
     commands: &mut Commands,
-    mesh: Handle<Mesh>,
+    visuals: &AgentVisualAssets,
     materials: &mut Assets<StandardMaterial>,
     id: AgentId,
     position: Vec3,
     collider_radius: f32,
     agent_spawned_events: &mut EventWriter<AgentSpawned>,
 ) -> Entity {
-    let material = materials.add(StandardMaterial {
-        base_color: agent_color(StateKind::Idle),
-        perceptual_roughness: 0.42,
-        metallic: 0.03,
-        reflectance: 0.38,
-        ..default()
-    });
+    let body_material = create_agent_body_material(materials);
     let entity = commands
         .spawn((
             Agent { id, age: 0.0 },
@@ -231,9 +270,28 @@ fn spawn_agent_entity(
             },
             ScenarioSpawned,
             Transform::from_translation(position),
-            Mesh3d(mesh),
-            MeshMaterial3d(material),
+            Mesh3d(visuals.body_mesh.clone()),
+            MeshMaterial3d(body_material),
         ))
+        .with_children(|parent| {
+            parent.spawn((
+                Mesh3d(visuals.head_mesh.clone()),
+                MeshMaterial3d(visuals.head_material.clone()),
+                Transform::from_xyz(0.0, 0.78, 0.0),
+            ));
+            parent.spawn((
+                Mesh3d(visuals.visor_mesh.clone()),
+                MeshMaterial3d(visuals.visor_material.clone()),
+                Transform::from_xyz(0.0, 0.82, 0.29),
+            ));
+            for x in [-0.23, 0.23] {
+                parent.spawn((
+                    Mesh3d(visuals.leg_mesh.clone()),
+                    MeshMaterial3d(visuals.limb_material.clone()),
+                    Transform::from_xyz(x, -0.62, 0.0),
+                ));
+            }
+        })
         .id();
 
     agent_spawned_events.send(AgentSpawned {
@@ -243,14 +301,114 @@ fn spawn_agent_entity(
     entity
 }
 
+fn create_agent_visual_assets(
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) -> AgentVisualAssets {
+    AgentVisualAssets {
+        body_mesh: meshes.add(Cuboid::new(0.72, 1.0, 0.52)),
+        head_mesh: meshes.add(Cuboid::new(0.56, 0.34, 0.46)),
+        visor_mesh: meshes.add(Cuboid::new(0.48, 0.08, 0.06)),
+        leg_mesh: meshes.add(Cuboid::new(0.18, 0.34, 0.18)),
+        head_material: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.84, 0.92, 0.90),
+            perceptual_roughness: 0.45,
+            metallic: 0.02,
+            reflectance: 0.36,
+            ..default()
+        }),
+        visor_material: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.05, 0.18, 0.22),
+            emissive: LinearRgba::rgb(0.0, 0.20, 0.24),
+            perceptual_roughness: 0.28,
+            ..default()
+        }),
+        limb_material: materials.add(StandardMaterial {
+            base_color: Color::srgb(0.16, 0.32, 0.35),
+            perceptual_roughness: 0.52,
+            reflectance: 0.22,
+            ..default()
+        }),
+    }
+}
+
+fn create_agent_body_material(
+    materials: &mut Assets<StandardMaterial>,
+) -> Handle<StandardMaterial> {
+    materials.add(StandardMaterial {
+        base_color: agent_color(StateKind::Idle),
+        perceptual_roughness: 0.42,
+        metallic: 0.03,
+        reflectance: 0.38,
+        ..default()
+    })
+}
+
 /// Keep agent material colors synchronized with their current simulation state.
 pub fn agent_visual_state_system(
-    query: Query<(&AgentState, &MeshMaterial3d<StandardMaterial>), With<Agent>>,
+    query: Query<(&AgentState, &Velocity, &MeshMaterial3d<StandardMaterial>), With<Agent>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    for (state, material_handle) in &query {
+    for (state, velocity, material_handle) in &query {
         if let Some(material) = materials.get_mut(&material_handle.0) {
             material.base_color = agent_color(state.current);
+            material.emissive = if velocity.linear.length_squared() > 0.01 {
+                LinearRgba::rgb(0.02, 0.08, 0.09)
+            } else {
+                LinearRgba::BLACK
+            };
+        }
+    }
+}
+
+/// Attach or remove a small carried-resource marker on agents with cargo.
+pub fn carried_resource_visual_system(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    agents: Query<AgentCargoVisualQueryItem, With<Agent>>,
+    carried_visuals: Query<Entity, With<CarriedResourceVisual>>,
+    mut visual_assets: Local<Option<(Handle<Mesh>, Handle<StandardMaterial>)>>,
+) {
+    let (mesh, material) = visual_assets
+        .get_or_insert_with(|| {
+            (
+                meshes.add(Cone::new(0.18, 0.36).mesh().resolution(5)),
+                materials.add(StandardMaterial {
+                    base_color: Color::srgb(1.0, 0.76, 0.28),
+                    emissive: LinearRgba::rgb(0.14, 0.08, 0.01),
+                    perceptual_roughness: 0.38,
+                    reflectance: 0.35,
+                    ..default()
+                }),
+            )
+        })
+        .clone();
+
+    for (agent, cargo, children) in &agents {
+        let visual_child = children.and_then(|children| {
+            children
+                .iter()
+                .copied()
+                .find(|child| carried_visuals.get(*child).is_ok())
+        });
+
+        match (cargo, visual_child) {
+            (Some(_), None) => {
+                commands.entity(agent).with_children(|parent| {
+                    parent.spawn((
+                        CarriedResourceVisual,
+                        Mesh3d(mesh.clone()),
+                        MeshMaterial3d(material.clone()),
+                        Transform::from_xyz(0.0, 0.36, 0.44)
+                            .with_rotation(Quat::from_rotation_z(0.18)),
+                    ));
+                });
+            },
+            (None, Some(child)) => {
+                commands.entity(child).despawn();
+            },
+            _ => {},
         }
     }
 }
@@ -269,6 +427,67 @@ fn agent_spawn_position(
             sim_config.agent_visual_height,
             rng.gen_range(0.0..=sim_config.world_size.y),
         ),
+    }
+}
+
+fn spawn_village_decor(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    center: Vec3,
+    radius: f32,
+) {
+    let hut_mesh = meshes.add(Cuboid::new(1.7, 1.0, 1.45));
+    let roof_mesh = meshes.add(Cone::new(1.25, 0.95).mesh().resolution(4));
+    let post_mesh = meshes.add(Cuboid::new(0.12, 0.55, 0.12));
+    let hut_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.62, 0.72, 0.70),
+        perceptual_roughness: 0.82,
+        reflectance: 0.12,
+        ..default()
+    });
+    let roof_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.30, 0.42, 0.76),
+        perceptual_roughness: 0.88,
+        reflectance: 0.10,
+        ..default()
+    });
+    let post_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.22, 0.25, 0.24),
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+
+    for index in 0..4 {
+        let angle = TAU * index as f32 / 4.0 + 0.45;
+        let distance = radius * 0.42;
+        let position = center + Vec3::new(angle.cos() * distance, 0.52, angle.sin() * distance);
+        let yaw = -angle + std::f32::consts::FRAC_PI_2;
+
+        commands
+            .spawn((
+                ScenarioSpawned,
+                Transform::from_translation(position).with_rotation(Quat::from_rotation_y(yaw)),
+                Visibility::default(),
+            ))
+            .with_children(|parent| {
+                parent.spawn((
+                    Mesh3d(hut_mesh.clone()),
+                    MeshMaterial3d(hut_material.clone()),
+                    Transform::IDENTITY,
+                ));
+                parent.spawn((
+                    Mesh3d(roof_mesh.clone()),
+                    MeshMaterial3d(roof_material.clone()),
+                    Transform::from_xyz(0.0, 0.84, 0.0)
+                        .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_4)),
+                ));
+                parent.spawn((
+                    Mesh3d(post_mesh.clone()),
+                    MeshMaterial3d(post_material.clone()),
+                    Transform::from_xyz(0.0, -0.12, 0.86),
+                ));
+            });
     }
 }
 
@@ -310,6 +529,7 @@ pub fn agent_color(state: StateKind) -> Color {
         StateKind::Exploring | StateKind::MovingToTarget => Color::srgb(0.24, 0.82, 0.92),
         StateKind::Eating => Color::srgb(0.45, 0.90, 0.52),
         StateKind::Resting => Color::srgb(0.50, 0.62, 1.0),
+        StateKind::Carrying => Color::srgb(1.0, 0.78, 0.32),
         StateKind::Fleeing => Color::srgb(1.0, 0.34, 0.24),
     }
 }

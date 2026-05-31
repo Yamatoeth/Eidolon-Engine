@@ -138,6 +138,7 @@ fn agent_state_color(state: StateKind) -> Color {
         StateKind::Exploring | StateKind::MovingToTarget => Color::srgb(0.24, 0.82, 0.92),
         StateKind::Eating => Color::srgb(0.45, 0.90, 0.52),
         StateKind::Resting => Color::srgb(0.50, 0.62, 1.0),
+        StateKind::Carrying => Color::srgb(1.0, 0.78, 0.32),
         StateKind::Fleeing => Color::srgb(1.0, 0.34, 0.24),
     }
 }

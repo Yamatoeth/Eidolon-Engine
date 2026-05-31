@@ -6,12 +6,24 @@ use serde::{Deserialize, Serialize};
 use crate::ai::actions::ActionKind;
 use crate::ai::decision::DecisionOutput;
 use crate::engine::SimulationTime;
-use crate::simulation::events::{ResourceConsumed, ResourceDepleted, ResourceReplenished};
-use crate::simulation::{Agent, AgentState, Needs, SimulationConfig, StateKind};
+use crate::simulation::events::{
+    ResourceConsumed, ResourceDelivered, ResourceDepleted, ResourceReplenished,
+};
+use crate::simulation::{Agent, AgentState, Needs, SimulationConfig, StateKind, Zone, ZoneKind};
 
 const RESOURCE_CONSUME_RATE: f32 = 18.0;
 const RESOURCE_REPLENISH_THRESHOLD_FRACTION: f32 = 0.2;
 const EAT_RANGE: f32 = 1.5;
+const CARRY_CAPACITY: f32 = 24.0;
+const VILLAGE_EAT_RATE: f32 = 0.18;
+
+type ForagingAgentQueryItem<'w> = (
+    Entity,
+    &'w Transform,
+    &'w Needs,
+    &'w DecisionOutput,
+    Option<&'w CarriedResource>,
+);
 
 /// Harvestable resource node.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -26,6 +38,51 @@ pub struct ResourceNode {
     pub regen_rate: f32,
     /// Whether the node is currently depleted.
     pub is_depleted: bool,
+}
+
+/// Resource parcel currently carried by an agent.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct CarriedResource {
+    /// Carried resource category.
+    pub kind: ResourceKind,
+    /// Amount carried in resource units.
+    pub amount: f32,
+    /// Maximum amount this parcel could contain.
+    pub capacity: f32,
+    /// Source resource entity this parcel was gathered from.
+    pub source: Entity,
+}
+
+/// Food storage attached to rest zones.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct VillageStore {
+    /// Food available for agents inside the village.
+    pub food: f32,
+    /// Maximum food storage.
+    pub capacity: f32,
+}
+
+impl VillageStore {
+    /// Create an empty village store.
+    #[must_use]
+    pub fn new(capacity: f32) -> Self {
+        Self {
+            food: 0.0,
+            capacity,
+        }
+    }
+
+    fn deposit_food(&mut self, amount: f32) -> f32 {
+        let accepted = amount.min((self.capacity - self.food).max(0.0));
+        self.food += accepted;
+        accepted
+    }
+
+    fn withdraw_food(&mut self, requested: f32) -> f32 {
+        let taken = requested.min(self.food).max(0.0);
+        self.food -= taken;
+        taken
+    }
 }
 
 /// Resource categories available in the world.
@@ -83,12 +140,15 @@ pub fn resource_regen_system(
     }
 }
 
-/// Consume food resources when agents are close enough to their selected target.
+/// Gather food near resources, then consume it when agents return to a rest zone.
 pub fn resource_consume_system(
+    mut commands: Commands,
     sim_time: Res<SimulationTime>,
-    mut agents: Query<(Entity, &Transform, &mut Needs, &DecisionOutput), With<Agent>>,
+    mut agents: Query<ForagingAgentQueryItem, With<Agent>>,
     mut resources: Query<(Entity, &Transform, &mut ResourceNode)>,
+    mut zones: Query<(Entity, &Transform, &Zone, &mut VillageStore)>,
     mut consumed_events: EventWriter<ResourceConsumed>,
+    mut delivered_events: EventWriter<ResourceDelivered>,
     mut depleted_events: EventWriter<ResourceDepleted>,
 ) {
     if sim_time.paused {
@@ -97,7 +157,25 @@ pub fn resource_consume_system(
 
     let dt = crate::engine::time::FIXED_TIMESTEP;
 
-    for (agent, agent_transform, mut needs, decision) in &mut agents {
+    for (agent, agent_transform, needs, decision, carried) in &mut agents {
+        if let Some(cargo) = carried {
+            if let Some((zone, accepted)) =
+                deposit_in_current_village(agent_transform.translation, cargo, &mut zones)
+            {
+                if accepted <= f32::EPSILON {
+                    continue;
+                }
+                delivered_events.send(ResourceDelivered {
+                    agent,
+                    zone,
+                    amount: accepted,
+                    kind: cargo.kind,
+                });
+                commands.entity(agent).remove::<CarriedResource>();
+            }
+            continue;
+        }
+
         if decision.action != ActionKind::Eat {
             continue;
         }
@@ -121,15 +199,19 @@ pub fn resource_consume_system(
             continue;
         }
 
-        let desired = (needs.hunger * RESOURCE_CONSUME_RATE * dt).max(0.0);
+        let desired = (needs.hunger * RESOURCE_CONSUME_RATE * dt).max(CARRY_CAPACITY);
         let amount = desired.min(resource.amount);
         if amount <= f32::EPSILON {
             continue;
         }
 
         resource.amount -= amount;
-        needs.hunger = (needs.hunger - amount / resource.max_amount).clamp(0.0, 1.0);
-        needs.energy = (needs.energy + amount / resource.max_amount * 0.4).clamp(0.0, 1.0);
+        commands.entity(agent).insert(CarriedResource {
+            kind: resource.kind,
+            amount,
+            capacity: CARRY_CAPACITY,
+            source: resource_entity,
+        });
         consumed_events.send(ResourceConsumed {
             agent,
             resource: resource_entity,
@@ -149,10 +231,30 @@ pub fn resource_consume_system(
     }
 }
 
+fn deposit_in_current_village(
+    position: Vec3,
+    cargo: &CarriedResource,
+    zones: &mut Query<(Entity, &Transform, &Zone, &mut VillageStore)>,
+) -> Option<(Entity, f32)> {
+    zones
+        .iter_mut()
+        .find(|(_, transform, zone, _)| {
+            zone.kind == ZoneKind::Rest && position.distance(transform.translation) <= zone.radius
+        })
+        .map(|(entity, _transform, _zone, mut store)| {
+            let accepted = match cargo.kind {
+                ResourceKind::Food => store.deposit_food(cargo.amount),
+                ResourceKind::Water | ResourceKind::Material => 0.0,
+            };
+            (entity, accepted)
+        })
+}
+
 /// Recover fatigue and energy while agents are resting.
 pub fn rest_recovery_system(
     sim_time: Res<SimulationTime>,
-    mut query: Query<(&AgentState, &mut Needs), With<Agent>>,
+    mut agents: Query<(&Transform, &AgentState, &mut Needs), With<Agent>>,
+    mut stores: Query<(&Transform, &Zone, &mut VillageStore)>,
 ) {
     if sim_time.paused {
         return;
@@ -160,10 +262,36 @@ pub fn rest_recovery_system(
 
     let dt = crate::engine::time::FIXED_TIMESTEP;
 
-    for (state, mut needs) in &mut query {
+    for (transform, state, mut needs) in &mut agents {
+        if needs.hunger > 0.0 {
+            feed_from_current_village(transform.translation, &mut needs, dt, &mut stores);
+        }
+
         if state.current == StateKind::Resting {
             needs.fatigue = (needs.fatigue - 0.05 * dt).clamp(0.0, 1.0);
             needs.energy = (needs.energy + 0.03 * dt).clamp(0.0, 1.0);
         }
     }
+}
+
+fn feed_from_current_village(
+    position: Vec3,
+    needs: &mut Needs,
+    dt: f32,
+    stores: &mut Query<(&Transform, &Zone, &mut VillageStore)>,
+) {
+    let Some((_transform, _zone, mut store)) = stores.iter_mut().find(|(transform, zone, _)| {
+        zone.kind == ZoneKind::Rest && position.distance(transform.translation) <= zone.radius
+    }) else {
+        return;
+    };
+
+    let requested = (needs.hunger * VILLAGE_EAT_RATE * CARRY_CAPACITY * dt).max(0.0);
+    let food = store.withdraw_food(requested);
+    if food <= f32::EPSILON {
+        return;
+    }
+
+    needs.hunger = (needs.hunger - food / CARRY_CAPACITY).clamp(0.0, 1.0);
+    needs.energy = (needs.energy + food / CARRY_CAPACITY * 0.35).clamp(0.0, 1.0);
 }

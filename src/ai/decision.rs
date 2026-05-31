@@ -3,13 +3,61 @@
 use bevy::prelude::*;
 
 use crate::ai::actions::{
-    score_collect, score_eat, score_explore, score_idle, score_rest, ActionKind, ActionScore,
+    score_collect, score_deliver, score_eat, score_explore, score_idle, score_rest, ActionKind,
+    ActionScore,
 };
+use crate::ai::memory::AgentMemory;
 use crate::ai::utility::{AIConfig, ScoringContext};
 use crate::engine::SimulationTime;
 use crate::simulation::{
-    Agent, AgentState, Needs, ResourceKind, ResourceNode, SimRng, SpatialGrid, Zone, ZoneKind,
+    Agent, AgentState, CarriedResource, Needs, ResourceKind, ResourceNode, SimRng, SpatialGrid,
+    Zone, ZoneKind,
 };
+
+type AIAgentQueryItem<'w> = (
+    Entity,
+    &'w Transform,
+    &'w Needs,
+    &'w AgentState,
+    &'w AgentRole,
+    &'w AgentMemory,
+    Option<&'w CarriedResource>,
+    &'w mut AgentIntent,
+    &'w mut DecisionOutput,
+    &'w mut AIDebugInfo,
+);
+
+/// Lightweight behavioral role that biases utility decisions.
+#[derive(Component, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentRole {
+    /// Prioritizes discovering and broadcasting useful locations.
+    Scout,
+    /// Prioritizes food collection and delivery.
+    Forager,
+    /// Prioritizes rest-zone stability and store usage.
+    Worker,
+}
+
+/// High-level intent selected by the AI layer.
+#[derive(Component, Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentIntent {
+    /// No current goal.
+    Idle,
+    /// Searching unknown space.
+    Explore,
+    /// Moving to a resource node.
+    Forage { resource: Entity },
+    /// Returning cargo to a rest zone.
+    Deliver { zone: Entity },
+    /// Recovering around a rest zone.
+    Rest { zone: Entity },
+}
+
+impl Default for AgentIntent {
+    fn default() -> Self {
+        Self::Idle
+    }
+}
 
 /// Output of the AI decision pipeline.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -111,11 +159,19 @@ impl PerceptionData {
 pub fn attach_ai_components_system(
     mut commands: Commands,
     query: Query<Entity, (With<Agent>, Without<DecisionOutput>)>,
+    agents: Query<&Agent>,
 ) {
     for entity in &query {
-        commands
-            .entity(entity)
-            .insert((DecisionOutput::default(), AIDebugInfo::default()));
+        let role = agents
+            .get(entity)
+            .map_or(AgentRole::Forager, |agent| role_for_agent(agent.id.0));
+        commands.entity(entity).insert((
+            role,
+            AgentIntent::default(),
+            AgentMemory::default(),
+            DecisionOutput::default(),
+            AIDebugInfo::default(),
+        ));
     }
 }
 
@@ -125,14 +181,7 @@ pub fn ai_scoring_system(
     config: Res<AIConfig>,
     mut rng: ResMut<SimRng>,
     spatial_grid: Res<SpatialGrid>,
-    mut agents: Query<(
-        Entity,
-        &Transform,
-        &Needs,
-        &AgentState,
-        &mut DecisionOutput,
-        &mut AIDebugInfo,
-    )>,
+    mut agents: Query<AIAgentQueryItem>,
     resources: Query<(Entity, &Transform, &ResourceNode)>,
     zones: Query<(Entity, &Transform, &Zone)>,
 ) {
@@ -140,7 +189,19 @@ pub fn ai_scoring_system(
         return;
     }
 
-    for (entity, transform, needs, state, mut decision, mut debug) in &mut agents {
+    for (
+        entity,
+        transform,
+        needs,
+        state,
+        role,
+        memory,
+        carried_resource,
+        mut intent,
+        mut decision,
+        mut debug,
+    ) in &mut agents
+    {
         if sim_time.elapsed - decision.last_decision_time < config.decision_interval {
             continue;
         }
@@ -158,11 +219,17 @@ pub fn ai_scoring_system(
         let ctx = ScoringContext {
             needs,
             state,
+            role,
+            memory,
+            carried_resource,
             perception: &perception,
             config: &config,
+            position: transform.translation,
+            now: sim_time.elapsed,
             explore_target,
         };
         let scores = [
+            score_deliver(&ctx),
             score_eat(&ctx),
             score_rest(&ctx),
             score_explore(&ctx),
@@ -183,6 +250,7 @@ pub fn ai_scoring_system(
             .map(|score| (score.action, score.score))
             .collect();
         debug.last_decision_time = sim_time.elapsed;
+        *intent = intent_for_action(selected);
     }
 }
 
@@ -217,33 +285,48 @@ pub fn build_perception(
         }
 
         if let Ok((entity, transform, zone)) = zones.get(candidate) {
-            let distance = position.distance(transform.translation);
-            if distance <= zone.radius {
-                perception.current_zone = Some(VisibleZone {
-                    entity,
-                    position: transform.translation,
-                    kind: zone.kind,
-                    distance,
-                });
-            }
-            if zone.kind == ZoneKind::Rest && distance <= radius {
-                let zone_entry = VisibleZone {
-                    entity,
-                    position: transform.translation,
-                    kind: zone.kind,
-                    distance,
-                };
-                if perception
-                    .nearest_rest_zone
-                    .map_or(true, |nearest| distance < nearest.distance)
-                {
-                    perception.nearest_rest_zone = Some(zone_entry);
-                }
-            }
+            update_current_zone(&mut perception, position, entity, transform, zone);
+        }
+    }
+
+    for (entity, transform, zone) in zones.iter() {
+        if zone.kind != ZoneKind::Rest {
+            continue;
+        }
+        let distance = position.distance(transform.translation);
+        let zone_entry = VisibleZone {
+            entity,
+            position: transform.translation,
+            kind: zone.kind,
+            distance,
+        };
+        if perception
+            .nearest_rest_zone
+            .map_or(true, |nearest| distance < nearest.distance)
+        {
+            perception.nearest_rest_zone = Some(zone_entry);
         }
     }
 
     perception
+}
+
+fn update_current_zone(
+    perception: &mut PerceptionData,
+    position: Vec3,
+    entity: Entity,
+    transform: &Transform,
+    zone: &Zone,
+) {
+    let distance = position.distance(transform.translation);
+    if distance <= zone.radius {
+        perception.current_zone = Some(VisibleZone {
+            entity,
+            position: transform.translation,
+            kind: zone.kind,
+            distance,
+        });
+    }
 }
 
 /// Select the highest scoring action.
@@ -254,4 +337,32 @@ pub fn select_best_action(scores: &[ActionScore]) -> ActionScore {
         .copied()
         .max_by(|a, b| a.score.total_cmp(&b.score))
         .unwrap_or_else(|| ActionScore::new(ActionKind::Idle, 0.0, None, None))
+}
+
+fn role_for_agent(agent_id: u64) -> AgentRole {
+    match agent_id % 5 {
+        0 => AgentRole::Scout,
+        1 | 2 => AgentRole::Forager,
+        _ => AgentRole::Worker,
+    }
+}
+
+fn intent_for_action(action: ActionScore) -> AgentIntent {
+    match action.action {
+        ActionKind::Idle | ActionKind::MoveTo => AgentIntent::Idle,
+        ActionKind::Explore | ActionKind::Collect => AgentIntent::Explore,
+        ActionKind::Eat => {
+            action
+                .target
+                .map_or(AgentIntent::Explore, |resource| AgentIntent::Forage {
+                    resource,
+                })
+        },
+        ActionKind::Deliver => action
+            .target
+            .map_or(AgentIntent::Idle, |zone| AgentIntent::Deliver { zone }),
+        ActionKind::Rest => action
+            .target
+            .map_or(AgentIntent::Idle, |zone| AgentIntent::Rest { zone }),
+    }
 }

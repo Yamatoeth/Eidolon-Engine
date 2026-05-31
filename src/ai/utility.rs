@@ -3,8 +3,9 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::ai::decision::PerceptionData;
-use crate::simulation::{AgentState, Needs};
+use crate::ai::decision::{AgentRole, PerceptionData};
+use crate::ai::memory::AgentMemory;
+use crate::simulation::{AgentState, CarriedResource, Needs};
 
 /// Runtime AI configuration.
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -91,10 +92,20 @@ pub struct ScoringContext<'a> {
     pub needs: &'a Needs,
     /// Agent state.
     pub state: &'a AgentState,
+    /// Lightweight behavioral role.
+    pub role: &'a AgentRole,
+    /// Recently remembered useful locations.
+    pub memory: &'a AgentMemory,
+    /// Resource parcel currently carried by the agent, if any.
+    pub carried_resource: Option<&'a CarriedResource>,
     /// Local perception.
     pub perception: &'a PerceptionData,
     /// AI configuration.
     pub config: &'a AIConfig,
+    /// Current agent position.
+    pub position: Vec3,
+    /// Current simulation time.
+    pub now: f32,
     /// Deterministic explore target.
     pub explore_target: Vec3,
 }

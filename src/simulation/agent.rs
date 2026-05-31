@@ -12,6 +12,7 @@ use crate::simulation::events::{
     AgentDied, DeathCause, NeedKind, NeedThresholdReached, ThresholdLevel,
 };
 use crate::simulation::world::SimulationConfig;
+use crate::simulation::{CarriedResource, VillageStore};
 
 /// Stable identifier for an agent entity.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -79,6 +80,8 @@ pub enum StateKind {
     Eating,
     /// Reserved for later rest behavior.
     Resting,
+    /// Returning to a rest zone while carrying gathered resources.
+    Carrying,
     /// Dumb random walk movement.
     Exploring,
     /// Future competition or hazard response.
@@ -145,6 +148,12 @@ pub struct SimulationMetrics {
     pub avg_hunger: f32,
     /// Average fatigue across live agents.
     pub avg_fatigue: f32,
+    /// Average energy across live agents.
+    pub avg_energy: f32,
+    /// Number of agents currently carrying resources.
+    pub carrying_count: u32,
+    /// Total food stored in rest zones.
+    pub village_food: f32,
 }
 
 /// Advance agent age and needs at the fixed simulation rate.
@@ -239,7 +248,11 @@ pub fn agent_movement_system(
     for (decision, mut transform, mut velocity) in &mut query {
         let should_move = matches!(
             decision.action,
-            ActionKind::MoveTo | ActionKind::Eat | ActionKind::Rest | ActionKind::Explore
+            ActionKind::MoveTo
+                | ActionKind::Eat
+                | ActionKind::Rest
+                | ActionKind::Explore
+                | ActionKind::Deliver
         );
         let Some(target) = decision.target_position.filter(|_| should_move) else {
             velocity.linear = Vec3::ZERO;
@@ -295,27 +308,38 @@ pub fn agent_death_system(
 
 /// Refresh aggregate simulation metrics for read-only UI.
 pub fn metrics_update_system(
-    query: Query<&Needs, With<Agent>>,
+    agents: Query<(&Needs, Option<&CarriedResource>), With<Agent>>,
+    stores: Query<&VillageStore>,
     mut metrics: ResMut<SimulationMetrics>,
 ) {
     let mut count = 0_u32;
     let mut hunger = 0.0;
     let mut fatigue = 0.0;
+    let mut energy = 0.0;
+    let mut carrying_count = 0_u32;
 
-    for needs in &query {
+    for (needs, carried) in &agents {
         count = count.saturating_add(1);
         hunger += needs.hunger;
         fatigue += needs.fatigue;
+        energy += needs.energy;
+        if carried.is_some() {
+            carrying_count = carrying_count.saturating_add(1);
+        }
     }
 
     metrics.agent_count = count;
+    metrics.carrying_count = carrying_count;
+    metrics.village_food = stores.iter().map(|store| store.food).sum();
     if count == 0 {
         metrics.avg_hunger = 0.0;
         metrics.avg_fatigue = 0.0;
+        metrics.avg_energy = 0.0;
     } else {
         let count = count as f32;
         metrics.avg_hunger = hunger / count;
         metrics.avg_fatigue = fatigue / count;
+        metrics.avg_energy = energy / count;
     }
 }
 
@@ -406,6 +430,7 @@ fn state_for_decision(decision: &DecisionOutput, position: Vec3) -> StateKind {
         ActionKind::Idle | ActionKind::Collect => StateKind::Idle,
         ActionKind::Explore => StateKind::Exploring,
         ActionKind::MoveTo => StateKind::MovingToTarget,
+        ActionKind::Deliver => StateKind::Carrying,
         ActionKind::Eat => state_for_target_action(decision, position, StateKind::Eating),
         ActionKind::Rest => state_for_target_action(decision, position, StateKind::Resting),
     }

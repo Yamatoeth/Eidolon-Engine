@@ -75,6 +75,19 @@ pub struct ResourceConsumed {
     pub kind: ResourceKind,
 }
 
+/// Agent delivered a carried resource parcel into a village store.
+#[derive(Event, Clone, Copy, Debug, PartialEq)]
+pub struct ResourceDelivered {
+    /// Agent entity that delivered the resource.
+    pub agent: Entity,
+    /// Zone entity that received the resource.
+    pub zone: Entity,
+    /// Amount delivered.
+    pub amount: f32,
+    /// Resource kind.
+    pub kind: ResourceKind,
+}
+
 /// Resource node reached zero available amount.
 #[derive(Event, Clone, Copy, Debug, PartialEq)]
 pub struct ResourceDepleted {

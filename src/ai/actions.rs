@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 
+use crate::ai::decision::{AgentRole, VisibleResource};
 use crate::ai::utility::{Curve, ScoringContext};
 use crate::simulation::{ResourceKind, StateKind};
 
@@ -16,6 +17,8 @@ pub enum ActionKind {
     Eat,
     /// Rest in a rest zone.
     Rest,
+    /// Carry gathered resources back to a rest zone.
+    Deliver,
     /// Explore with a deterministic wander target.
     Explore,
     /// Future non-food resource collection.
@@ -56,7 +59,11 @@ impl ActionScore {
 /// Score eating based on hunger and nearby food availability.
 #[must_use]
 pub fn score_eat(ctx: &ScoringContext<'_>) -> ActionScore {
-    let Some(food) = ctx.perception.nearest_food() else {
+    if ctx.carried_resource.is_some() {
+        return ActionScore::new(ActionKind::Eat, 0.0, None, None);
+    }
+
+    let Some(food) = nearest_food_candidate(ctx) else {
         return ActionScore::new(ActionKind::Eat, 0.0, None, None);
     };
 
@@ -67,7 +74,13 @@ pub fn score_eat(ctx: &ScoringContext<'_>) -> ActionScore {
         1.0
     };
     let distance_factor = distance_factor(food.distance, ctx.config.perception_radius);
-    let score = hunger_urgency * not_eating * distance_factor * ctx.config.utility_weights.eat;
+    let role_bias = match ctx.role {
+        AgentRole::Forager => 1.15,
+        AgentRole::Worker => 0.95,
+        AgentRole::Scout => 0.85,
+    };
+    let score =
+        hunger_urgency * not_eating * distance_factor * ctx.config.utility_weights.eat * role_bias;
 
     ActionScore::new(
         ActionKind::Eat,
@@ -77,9 +90,37 @@ pub fn score_eat(ctx: &ScoringContext<'_>) -> ActionScore {
     )
 }
 
+/// Score delivery when an agent is carrying a gathered resource.
+#[must_use]
+pub fn score_deliver(ctx: &ScoringContext<'_>) -> ActionScore {
+    let Some(cargo) = ctx.carried_resource else {
+        return ActionScore::new(ActionKind::Deliver, 0.0, None, None);
+    };
+    let Some(rest_zone) = ctx.perception.nearest_rest_zone else {
+        return ActionScore::new(ActionKind::Deliver, 0.0, None, None);
+    };
+
+    let role_bias = match ctx.role {
+        AgentRole::Forager => 1.1,
+        AgentRole::Worker => 1.0,
+        AgentRole::Scout => 0.9,
+    };
+    let cargo_urgency = (cargo.amount / cargo.capacity).clamp(0.35, 1.0) * role_bias;
+    ActionScore::new(
+        ActionKind::Deliver,
+        cargo_urgency,
+        Some(rest_zone.entity),
+        Some(rest_zone.position),
+    )
+}
+
 /// Score resting based on fatigue and nearby rest zones.
 #[must_use]
 pub fn score_rest(ctx: &ScoringContext<'_>) -> ActionScore {
+    if ctx.carried_resource.is_some() {
+        return ActionScore::new(ActionKind::Rest, 0.0, None, None);
+    }
+
     let Some(rest_zone) = ctx.perception.nearest_rest_zone else {
         return ActionScore::new(ActionKind::Rest, 0.0, None, None);
     };
@@ -91,7 +132,16 @@ pub fn score_rest(ctx: &ScoringContext<'_>) -> ActionScore {
         1.0
     };
     let distance_factor = distance_factor(rest_zone.distance, ctx.config.perception_radius);
-    let score = fatigue_urgency * not_resting * distance_factor * ctx.config.utility_weights.rest;
+    let role_bias = match ctx.role {
+        AgentRole::Worker => 1.1,
+        AgentRole::Forager => 0.95,
+        AgentRole::Scout => 0.9,
+    };
+    let score = fatigue_urgency
+        * not_resting
+        * distance_factor
+        * ctx.config.utility_weights.rest
+        * role_bias;
 
     ActionScore::new(
         ActionKind::Rest,
@@ -104,14 +154,24 @@ pub fn score_rest(ctx: &ScoringContext<'_>) -> ActionScore {
 /// Score exploration when needs are not urgent.
 #[must_use]
 pub fn score_explore(ctx: &ScoringContext<'_>) -> ActionScore {
+    if ctx.carried_resource.is_some() {
+        return ActionScore::new(ActionKind::Explore, 0.0, None, None);
+    }
+
     let hunger_ok = 1.0 - Curve::Threshold { cutoff: 0.7 }.evaluate(ctx.needs.hunger);
     let fatigue_ok = 1.0 - Curve::Threshold { cutoff: 0.75 }.evaluate(ctx.needs.fatigue);
     let energy_ok = Curve::InverseQuadratic.evaluate(ctx.needs.energy);
+    let role_bias = match ctx.role {
+        AgentRole::Scout => 1.25,
+        AgentRole::Forager => 0.95,
+        AgentRole::Worker => 0.85,
+    };
     let score = hunger_ok
         * fatigue_ok
         * energy_ok
         * ctx.config.utility_weights.explore
-        * boredom_factor(ctx.state.time_in_state);
+        * boredom_factor(ctx.state.time_in_state)
+        * role_bias;
 
     ActionScore::new(ActionKind::Explore, score, None, Some(ctx.explore_target))
 }
@@ -119,6 +179,10 @@ pub fn score_explore(ctx: &ScoringContext<'_>) -> ActionScore {
 /// Score generic collection for visible non-food resources.
 #[must_use]
 pub fn score_collect(ctx: &ScoringContext<'_>) -> ActionScore {
+    if ctx.carried_resource.is_some() {
+        return ActionScore::new(ActionKind::Collect, 0.0, None, None);
+    }
+
     let Some(resource) = ctx
         .perception
         .visible_resources
@@ -156,4 +220,18 @@ fn distance_factor(distance: f32, perception_radius: f32) -> f32 {
 
 fn boredom_factor(time_in_state: f32) -> f32 {
     (time_in_state / 4.0).clamp(0.35, 1.0)
+}
+
+fn nearest_food_candidate(ctx: &ScoringContext<'_>) -> Option<VisibleResource> {
+    ctx.perception.nearest_food().or_else(|| {
+        ctx.memory
+            .nearest_food(ctx.position, ctx.now)
+            .map(|resource| VisibleResource {
+                entity: resource.entity,
+                position: resource.position,
+                kind: resource.kind,
+                amount: resource.estimated_amount,
+                distance: ctx.position.distance(resource.position),
+            })
+    })
 }

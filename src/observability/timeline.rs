@@ -8,8 +8,8 @@ use bevy_inspector_egui::bevy_egui::{egui, EguiContexts};
 use crate::engine::SimulationTime;
 use crate::observability::inspector::ObservabilityConfig;
 use crate::simulation::{
-    AgentDied, AgentSpawned, NeedThresholdReached, ResourceConsumed, ResourceDepleted,
-    ResourceReplenished,
+    AgentDied, AgentSpawned, NeedThresholdReached, ResourceConsumed, ResourceDelivered,
+    ResourceDepleted, ResourceReplenished,
 };
 
 /// Timeline event category filter.
@@ -35,6 +35,8 @@ pub enum TimelineEventKind {
     NeedThreshold,
     /// Resource was consumed.
     ResourceConsumed,
+    /// Resource was delivered to a village store.
+    ResourceDelivered,
     /// Resource was depleted.
     ResourceDepleted,
     /// Resource was replenished.
@@ -130,6 +132,7 @@ pub fn timeline_record_resources_system(
     config: Res<ObservabilityConfig>,
     mut timeline: ResMut<EventTimeline>,
     mut resource_consumed: EventReader<ResourceConsumed>,
+    mut resource_delivered: EventReader<ResourceDelivered>,
     mut resource_depleted: EventReader<ResourceDepleted>,
     mut resource_replenished: EventReader<ResourceReplenished>,
 ) {
@@ -141,6 +144,14 @@ pub fn timeline_record_resources_system(
             TimelineEventKind::ResourceConsumed,
             vec![event.agent, event.resource],
             format!("{:?} consumed {:.2}", event.kind, event.amount),
+        ));
+    }
+    for event in resource_delivered.read() {
+        timeline.push(entry(
+            &sim_time,
+            TimelineEventKind::ResourceDelivered,
+            vec![event.agent, event.zone],
+            format!("{:?} delivered {:.2}", event.kind, event.amount),
         ));
     }
     for event in resource_depleted.read() {
@@ -233,6 +244,7 @@ fn event_matches_filter(kind: &TimelineEventKind, filter: TimelineFilter) -> boo
         TimelineFilter::Resources => matches!(
             kind,
             TimelineEventKind::ResourceConsumed
+                | TimelineEventKind::ResourceDelivered
                 | TimelineEventKind::ResourceDepleted
                 | TimelineEventKind::ResourceReplenished
         ),

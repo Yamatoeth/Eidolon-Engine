@@ -3,15 +3,21 @@
 use bevy::prelude::*;
 use bevy_inspector_egui::bevy_egui::{egui, EguiContexts};
 
-use crate::ai::{AIDebugInfo, DecisionOutput};
+use crate::ai::{AIDebugInfo, AgentIntent, AgentMemory, AgentRole, DecisionOutput};
 use crate::engine::{EngineAction, EngineActionEvent, SimulationTime};
 use crate::scenarios::loader::{ScenarioCatalog, ScenarioLoadRequested};
-use crate::simulation::{Agent, AgentState, Needs, ResourceNode, SimulationMetrics, Zone};
+use crate::simulation::{
+    Agent, AgentState, CarriedResource, Needs, ResourceNode, SimulationMetrics, VillageStore, Zone,
+};
 
 type AgentInspectorItem<'a> = (
     &'a Agent,
     &'a Needs,
     &'a AgentState,
+    Option<&'a AgentRole>,
+    Option<&'a AgentIntent>,
+    Option<&'a AgentMemory>,
+    Option<&'a CarriedResource>,
     Option<&'a DecisionOutput>,
     Option<&'a AIDebugInfo>,
 );
@@ -136,7 +142,7 @@ pub fn inspector_ui_system(
     mut state: ResMut<InspectorState>,
     sim_time: Res<SimulationTime>,
     metrics: Res<SimulationMetrics>,
-    zones: Query<(Entity, &Zone, &Transform)>,
+    zones: Query<(Entity, &Zone, &Transform, Option<&VillageStore>)>,
     resources: Query<(Entity, &ResourceNode, &Transform)>,
     agents: Query<(Entity, AgentInspectorItem<'_>, &Transform)>,
 ) {
@@ -169,6 +175,9 @@ pub fn inspector_ui_system(
             ui.label(format!("Live agents: {}", metrics.agent_count));
             ui.label(format!("Average hunger: {:.2}", metrics.avg_hunger));
             ui.label(format!("Average fatigue: {:.2}", metrics.avg_fatigue));
+            ui.label(format!("Average energy: {:.2}", metrics.avg_energy));
+            ui.label(format!("Carrying: {}", metrics.carrying_count));
+            ui.label(format!("Village food: {:.1}", metrics.village_food));
             ui.separator();
             egui::ScrollArea::vertical()
                 .max_height(260.0)
@@ -207,14 +216,23 @@ fn draw_entity_list(
     state: &mut InspectorState,
     agents: &Query<(Entity, AgentInspectorItem<'_>, &Transform)>,
     resources: &Query<(Entity, &ResourceNode, &Transform)>,
-    zones: &Query<(Entity, &Zone, &Transform)>,
+    zones: &Query<(Entity, &Zone, &Transform, Option<&VillageStore>)>,
 ) {
     if matches!(state.filter, InspectorFilter::All | InspectorFilter::Agents) {
-        for (entity, (agent, _needs, agent_state, decision, _debug), _transform) in agents.iter() {
+        for (
+            entity,
+            (agent, _needs, agent_state, _role, intent, _memory, _cargo, decision, _debug),
+            _transform,
+        ) in agents.iter()
+        {
             let label = match decision {
                 Some(decision) => format!(
-                    "Agent #{:03} {:?} {:?} {:.2}",
-                    agent.id.0, agent_state.current, decision.action, decision.score
+                    "Agent #{:03} {:?} {:?} {:?} {:.2}",
+                    agent.id.0,
+                    agent_state.current,
+                    intent.copied().unwrap_or_default(),
+                    decision.action,
+                    decision.score
                 ),
                 None => format!("Agent #{:03} {:?}", agent.id.0, agent_state.current),
             };
@@ -246,8 +264,15 @@ fn draw_entity_list(
     }
 
     if matches!(state.filter, InspectorFilter::All | InspectorFilter::Zones) {
-        for (entity, zone, _transform) in zones.iter() {
-            let label = format!("Zone {:?} radius {:.1}", zone.kind, zone.radius);
+        for (entity, zone, _transform, store) in zones.iter() {
+            let label = if let Some(store) = store {
+                format!(
+                    "Zone {:?} radius {:.1} food {:.1}/{:.1}",
+                    zone.kind, zone.radius, store.food, store.capacity
+                )
+            } else {
+                format!("Zone {:?} radius {:.1}", zone.kind, zone.radius)
+            };
             if ui
                 .selectable_label(state.selected == Some(entity), label)
                 .clicked()
@@ -291,7 +316,7 @@ fn draw_selected_details(
     selected: Option<Entity>,
     agents: &Query<(Entity, AgentInspectorItem<'_>, &Transform)>,
     resources: &Query<(Entity, &ResourceNode, &Transform)>,
-    zones: &Query<(Entity, &Zone, &Transform)>,
+    zones: &Query<(Entity, &Zone, &Transform, Option<&VillageStore>)>,
 ) {
     let Some(selected) = selected else {
         ui.label("No entity selected");
@@ -299,8 +324,19 @@ fn draw_selected_details(
     };
 
     ui.heading("Selected");
-    if let Ok((_entity, (agent, needs, state, decision, debug), transform)) = agents.get(selected) {
+    if let Ok((
+        _entity,
+        (agent, needs, state, role, intent, memory, cargo, decision, debug),
+        transform,
+    )) = agents.get(selected)
+    {
         ui.label(format!("Agent #{}", agent.id.0));
+        if let Some(role) = role {
+            ui.label(format!("Role: {role:?}"));
+        }
+        if let Some(intent) = intent {
+            ui.label(format!("Intent: {intent:?}"));
+        }
         ui.label(format!(
             "Position: {}",
             format_position(transform.translation)
@@ -312,6 +348,19 @@ fn draw_selected_details(
         ui.add(egui::ProgressBar::new(needs.hunger).text(format!("hunger {:.2}", needs.hunger)));
         ui.add(egui::ProgressBar::new(needs.fatigue).text(format!("fatigue {:.2}", needs.fatigue)));
         ui.add(egui::ProgressBar::new(needs.energy).text(format!("energy {:.2}", needs.energy)));
+        if let Some(cargo) = cargo {
+            ui.label(format!(
+                "Cargo: {:?} {:.1}/{:.1}",
+                cargo.kind, cargo.amount, cargo.capacity
+            ));
+        }
+        if let Some(memory) = memory {
+            ui.label(format!(
+                "Memory: {} resources, {} villages",
+                memory.resources.len(),
+                memory.rest_zones.len()
+            ));
+        }
         if let Some(decision) = decision {
             ui.label(format!(
                 "Decision: {:?} score {:.2} target {:?}",
@@ -341,13 +390,19 @@ fn draw_selected_details(
         return;
     }
 
-    if let Ok((_entity, zone, transform)) = zones.get(selected) {
+    if let Ok((_entity, zone, transform, store)) = zones.get(selected) {
         ui.label(format!("Zone {:?}", zone.kind));
         ui.label(format!(
             "Position: {}",
             format_position(transform.translation)
         ));
         ui.label(format!("Radius: {:.1}", zone.radius));
+        if let Some(store) = store {
+            ui.add(
+                egui::ProgressBar::new(store.food / store.capacity.max(1.0))
+                    .text(format!("food {:.1}/{:.1}", store.food, store.capacity)),
+            );
+        }
     }
 }
 

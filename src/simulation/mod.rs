@@ -16,9 +16,9 @@ pub use agent::{
 };
 pub use events::{
     AgentDied, AgentSpawned, DeathCause, NeedKind, NeedThresholdReached, ResourceConsumed,
-    ResourceDepleted, ResourceReplenished, ThresholdLevel,
+    ResourceDelivered, ResourceDepleted, ResourceReplenished, ThresholdLevel,
 };
-pub use resource::{ResourceKind, ResourceNode};
+pub use resource::{CarriedResource, ResourceKind, ResourceNode, VillageStore};
 pub use spatial::{Collider, GridCell, SpatialGrid};
 pub use world::{NeedsDecayRates, SimulationConfig, Zone, ZoneId, ZoneKind};
 
@@ -35,6 +35,7 @@ impl Plugin for SimulationPlugin {
             .add_event::<AgentDied>()
             .add_event::<AgentSpawned>()
             .add_event::<ResourceConsumed>()
+            .add_event::<ResourceDelivered>()
             .add_event::<ResourceDepleted>()
             .add_event::<ResourceReplenished>()
             .add_systems(
@@ -50,7 +51,8 @@ impl Plugin for SimulationPlugin {
                     agent::agent_death_system,
                     agent::metrics_update_system,
                 )
-                    .chain(),
+                    .chain()
+                    .after(crate::engine::time::update_simulation_time),
             );
     }
 }
