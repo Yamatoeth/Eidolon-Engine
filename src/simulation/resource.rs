@@ -176,7 +176,7 @@ pub fn resource_consume_system(
             continue;
         }
 
-        if decision.action != ActionKind::Eat {
+        if !matches!(decision.action, ActionKind::Eat | ActionKind::Collect) {
             continue;
         }
 
@@ -188,7 +188,10 @@ pub fn resource_consume_system(
             continue;
         };
 
-        if resource.kind != ResourceKind::Food || resource.is_depleted {
+        if resource.is_depleted
+            || matches!(decision.action, ActionKind::Eat) && resource.kind != ResourceKind::Food
+            || matches!(decision.action, ActionKind::Collect) && resource.kind == ResourceKind::Food
+        {
             continue;
         }
 

@@ -39,6 +39,7 @@ impl Plugin for EnginePlugin {
                     input::apply_engine_actions,
                     camera::handle_camera_input,
                     render::draw_debug_grid_system,
+                    render::update_agent_need_colors_system,
                 ),
             )
             .add_systems(FixedUpdate, time::update_simulation_time);

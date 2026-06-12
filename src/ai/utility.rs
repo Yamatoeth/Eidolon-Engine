@@ -16,6 +16,9 @@ pub struct AIConfig {
     pub decision_interval: f32,
     /// Maximum perception distance in world units.
     pub perception_radius: f32,
+    /// Maximum rest-zone perception distance in world units.
+    #[serde(default = "default_rest_zone_perception_radius")]
+    pub rest_zone_perception_radius: f32,
 }
 
 impl Default for AIConfig {
@@ -24,8 +27,13 @@ impl Default for AIConfig {
             utility_weights: UtilityWeights::default(),
             decision_interval: 0.5,
             perception_radius: 30.0,
+            rest_zone_perception_radius: default_rest_zone_perception_radius(),
         }
     }
+}
+
+fn default_rest_zone_perception_radius() -> f32 {
+    60.0
 }
 
 /// Tunable weights for utility actions.

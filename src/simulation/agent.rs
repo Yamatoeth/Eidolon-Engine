@@ -253,6 +253,7 @@ pub fn agent_movement_system(
                 | ActionKind::Rest
                 | ActionKind::Explore
                 | ActionKind::Deliver
+                | ActionKind::Collect
         );
         let Some(target) = decision.target_position.filter(|_| should_move) else {
             velocity.linear = Vec3::ZERO;

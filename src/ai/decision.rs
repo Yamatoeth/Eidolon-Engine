@@ -210,6 +210,7 @@ pub fn ai_scoring_system(
             entity,
             transform.translation,
             config.perception_radius,
+            config.rest_zone_perception_radius,
             &spatial_grid,
             &resources,
             &zones,
@@ -260,6 +261,7 @@ pub fn build_perception(
     agent: Entity,
     position: Vec3,
     radius: f32,
+    rest_zone_radius: f32,
     spatial_grid: &SpatialGrid,
     resources: &Query<(Entity, &Transform, &ResourceNode)>,
     zones: &Query<(Entity, &Transform, &Zone)>,
@@ -294,6 +296,9 @@ pub fn build_perception(
             continue;
         }
         let distance = position.distance(transform.translation);
+        if distance > rest_zone_radius {
+            continue;
+        }
         let zone_entry = VisibleZone {
             entity,
             position: transform.translation,

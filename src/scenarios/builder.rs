@@ -7,14 +7,17 @@ use rand::Rng;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
+use crate::engine::render::agent_needs_color;
 use crate::scenarios::loader::{ActiveScenario, AgentDistribution, ScenarioConfig};
 use crate::simulation::{
     Agent, AgentId, AgentSpawned, AgentState, CarriedResource, Collider, Needs, ResourceNode,
-    SimulationConfig, StateKind, Velocity, VillageStore, Zone, ZoneId, ZoneKind,
+    SimulationConfig, Velocity, VillageStore, Zone, ZoneId, ZoneKind,
 };
 
 const RESOURCE_NODE_MAX_AMOUNT: f32 = 100.0;
 const RESOURCE_NODE_RADIUS: f32 = 1.2;
+const RESOURCE_NODE_VISUAL_SCALE: f32 = 1.3;
+const AGENT_VISUAL_SCALE: f32 = 1.4;
 pub const AGENT_CAPSULE_RADIUS: f32 = 0.42;
 pub const AGENT_CAPSULE_LENGTH: f32 = 1.2;
 
@@ -138,7 +141,14 @@ fn spawn_resource_nodes(
         return;
     }
 
-    let mesh = meshes.add(Cone::new(0.72, 1.85).mesh().resolution(5));
+    let mesh = meshes.add(
+        Cone::new(
+            0.72 * RESOURCE_NODE_VISUAL_SCALE,
+            1.85 * RESOURCE_NODE_VISUAL_SCALE,
+        )
+        .mesh()
+        .resolution(5),
+    );
     let material = materials.add(StandardMaterial {
         base_color: Color::srgb(0.95, 0.66, 0.32),
         emissive: LinearRgba::rgb(0.24, 0.12, 0.03),
@@ -147,7 +157,14 @@ fn spawn_resource_nodes(
         reflectance: 0.42,
         ..default()
     });
-    let shard_mesh = meshes.add(Cone::new(0.34, 1.15).mesh().resolution(4));
+    let shard_mesh = meshes.add(
+        Cone::new(
+            0.34 * RESOURCE_NODE_VISUAL_SCALE,
+            1.15 * RESOURCE_NODE_VISUAL_SCALE,
+        )
+        .mesh()
+        .resolution(4),
+    );
     let shard_material = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 0.78, 0.44),
         emissive: LinearRgba::rgb(0.18, 0.10, 0.03),
@@ -306,10 +323,26 @@ fn create_agent_visual_assets(
     materials: &mut Assets<StandardMaterial>,
 ) -> AgentVisualAssets {
     AgentVisualAssets {
-        body_mesh: meshes.add(Cuboid::new(0.72, 1.0, 0.52)),
-        head_mesh: meshes.add(Cuboid::new(0.56, 0.34, 0.46)),
-        visor_mesh: meshes.add(Cuboid::new(0.48, 0.08, 0.06)),
-        leg_mesh: meshes.add(Cuboid::new(0.18, 0.34, 0.18)),
+        body_mesh: meshes.add(Cuboid::new(
+            0.72 * AGENT_VISUAL_SCALE,
+            1.0 * AGENT_VISUAL_SCALE,
+            0.52 * AGENT_VISUAL_SCALE,
+        )),
+        head_mesh: meshes.add(Cuboid::new(
+            0.56 * AGENT_VISUAL_SCALE,
+            0.34 * AGENT_VISUAL_SCALE,
+            0.46 * AGENT_VISUAL_SCALE,
+        )),
+        visor_mesh: meshes.add(Cuboid::new(
+            0.48 * AGENT_VISUAL_SCALE,
+            0.08 * AGENT_VISUAL_SCALE,
+            0.06 * AGENT_VISUAL_SCALE,
+        )),
+        leg_mesh: meshes.add(Cuboid::new(
+            0.18 * AGENT_VISUAL_SCALE,
+            0.34 * AGENT_VISUAL_SCALE,
+            0.18 * AGENT_VISUAL_SCALE,
+        )),
         head_material: materials.add(StandardMaterial {
             base_color: Color::srgb(0.84, 0.92, 0.90),
             perceptual_roughness: 0.45,
@@ -336,7 +369,7 @@ fn create_agent_body_material(
     materials: &mut Assets<StandardMaterial>,
 ) -> Handle<StandardMaterial> {
     materials.add(StandardMaterial {
-        base_color: agent_color(StateKind::Idle),
+        base_color: agent_needs_color(&Needs::default()),
         perceptual_roughness: 0.42,
         metallic: 0.03,
         reflectance: 0.38,
@@ -344,14 +377,14 @@ fn create_agent_body_material(
     })
 }
 
-/// Keep agent material colors synchronized with their current simulation state.
+/// Keep legacy scenario-registered agent visuals aligned with engine need colors.
 pub fn agent_visual_state_system(
-    query: Query<(&AgentState, &Velocity, &MeshMaterial3d<StandardMaterial>), With<Agent>>,
+    query: Query<(&Needs, &Velocity, &MeshMaterial3d<StandardMaterial>), With<Agent>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    for (state, velocity, material_handle) in &query {
+    for (needs, velocity, material_handle) in &query {
         if let Some(material) = materials.get_mut(&material_handle.0) {
-            material.base_color = agent_color(state.current);
+            material.base_color = agent_needs_color(needs);
             material.emissive = if velocity.linear.length_squared() > 0.01 {
                 LinearRgba::rgb(0.02, 0.08, 0.09)
             } else {
@@ -519,19 +552,6 @@ fn clustered_agent_position(index: u32, sim_config: &SimulationConfig) -> Vec3 {
         sim_config.agent_visual_height,
         (center.y + angle.sin() * radius).clamp(0.0, sim_config.world_size.y),
     )
-}
-
-/// Color used for agent visuals in the current state.
-#[must_use]
-pub fn agent_color(state: StateKind) -> Color {
-    match state {
-        StateKind::Idle => Color::srgb(0.70, 0.77, 0.80),
-        StateKind::Exploring | StateKind::MovingToTarget => Color::srgb(0.24, 0.82, 0.92),
-        StateKind::Eating => Color::srgb(0.45, 0.90, 0.52),
-        StateKind::Resting => Color::srgb(0.50, 0.62, 1.0),
-        StateKind::Carrying => Color::srgb(1.0, 0.78, 0.32),
-        StateKind::Fleeing => Color::srgb(1.0, 0.34, 0.24),
-    }
 }
 
 fn zone_fill_color(kind: ZoneKind) -> Color {

@@ -2,6 +2,7 @@
 
 use std::f32::consts::FRAC_PI_2;
 
+use bevy::core_pipeline::bloom::Bloom;
 use bevy::input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 
@@ -57,6 +58,10 @@ pub fn spawn_orbit_camera(mut commands: Commands) {
 
     commands.spawn((
         Camera3d::default(),
+        Bloom {
+            intensity: 0.15,
+            ..Bloom::NATURAL
+        },
         Transform::from_translation(position).looking_at(camera.target, Vec3::Y),
         camera,
     ));

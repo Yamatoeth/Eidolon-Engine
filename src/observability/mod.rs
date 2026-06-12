@@ -14,6 +14,8 @@ pub mod overlays;
 #[cfg(feature = "observability")]
 pub mod replay;
 #[cfg(feature = "observability")]
+pub mod theme;
+#[cfg(feature = "observability")]
 pub mod timeline;
 
 pub struct ObservabilityPlugin;
@@ -30,6 +32,7 @@ impl Plugin for ObservabilityPlugin {
                 .add_systems(
                     Update,
                     (
+                        theme::apply_egui_theme_system,
                         inspector::handle_observability_actions,
                         inspector::click_to_inspect_system,
                         inspector::sync_inspector_selection_system,
@@ -37,7 +40,8 @@ impl Plugin for ObservabilityPlugin {
                         inspector::scenario_selector_ui_system,
                         timeline::timeline_ui_system,
                         replay::replay_ui_system,
-                    ),
+                    )
+                        .chain(),
                 )
                 .add_systems(
                     FixedUpdate,

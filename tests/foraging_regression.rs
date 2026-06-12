@@ -146,3 +146,58 @@ fn agents_inside_village_eat_from_shared_store() {
         "agents in a village should be able to eat from the shared store"
     );
 }
+
+#[test]
+fn collect_picks_up_non_food_resources_in_range() {
+    let mut app = App::new();
+    app.init_resource::<SimulationTime>()
+        .add_event::<ResourceConsumed>()
+        .add_event::<ResourceDelivered>()
+        .add_event::<ResourceDepleted>()
+        .add_systems(Update, resource_consume_system);
+
+    let resource = app
+        .world_mut()
+        .spawn((
+            ResourceNode {
+                kind: ResourceKind::Material,
+                amount: 40.0,
+                max_amount: 40.0,
+                regen_rate: 0.0,
+                is_depleted: false,
+            },
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ))
+        .id();
+    let agent = app
+        .world_mut()
+        .spawn((
+            Agent {
+                id: AgentId(0),
+                age: 0.0,
+            },
+            Needs::default(),
+            DecisionOutput {
+                action: ActionKind::Collect,
+                target: Some(resource),
+                target_position: Some(Vec3::ZERO),
+                score: 1.0,
+                last_decision_time: 0.0,
+            },
+            Transform::from_xyz(0.0, 0.0, 1.0),
+        ))
+        .id();
+
+    app.update();
+
+    let cargo = app
+        .world()
+        .get::<CarriedResource>(agent)
+        .expect("collect should pick up a non-food resource in range");
+    assert_eq!(cargo.kind, ResourceKind::Material);
+    assert_eq!(cargo.source, resource);
+    assert!(
+        app.world().get::<ResourceNode>(resource).unwrap().amount < 40.0,
+        "collect should reduce the source resource"
+    );
+}
