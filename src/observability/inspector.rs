@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 use bevy_inspector_egui::bevy_egui::{egui, EguiContexts};
 
+use crate::ai::actions::ActionKind;
 use crate::ai::{AIDebugInfo, AgentIntent, AgentMemory, AgentRole, DecisionOutput};
 use crate::engine::{EngineAction, EngineActionEvent, SimulationTime};
 use crate::scenarios::loader::{ScenarioCatalog, ScenarioLoadRequested};
@@ -346,9 +347,33 @@ fn draw_selected_details(
             "State: {:?} (previous {:?}, {:.2}s)",
             state.current, state.previous, state.time_in_state
         ));
-        ui.add(egui::ProgressBar::new(needs.hunger).text(format!("hunger {:.2}", needs.hunger)));
-        ui.add(egui::ProgressBar::new(needs.fatigue).text(format!("fatigue {:.2}", needs.fatigue)));
-        ui.add(egui::ProgressBar::new(needs.energy).text(format!("energy {:.2}", needs.energy)));
+        ui.separator();
+        ui.heading("Needs");
+        draw_need_bar_row(ui, "Hunger", needs.hunger, NeedBarKind::Hunger);
+        draw_need_bar_row(ui, "Fatigue", needs.fatigue, NeedBarKind::Fatigue);
+        draw_need_bar_row(ui, "Energy", needs.energy, NeedBarKind::Energy);
+        ui.separator();
+        ui.heading("AI Decision");
+        if let Some(decision) = decision {
+            ui.horizontal(|ui| {
+                draw_action_badge(ui, decision.action);
+                ui.label(format!("score: {:.2}", decision.score));
+            });
+            if let Some(debug) = debug {
+                let mut last_scores = debug.last_scores.clone();
+                last_scores.sort_by(|a, b| b.1.total_cmp(&a.1));
+                ui.horizontal_wrapped(|ui| {
+                    for (index, (action, score)) in last_scores.iter().take(6).enumerate() {
+                        if index > 0 {
+                            ui.label(" ");
+                        }
+                        ui.small(format!("{}: {:.2}", action_name(*action), score));
+                    }
+                });
+            }
+        } else {
+            ui.label("No decision output available");
+        }
         if let Some(cargo) = cargo {
             ui.label(format!(
                 "Cargo: {:?} {:.1}/{:.1}",
@@ -361,17 +386,6 @@ fn draw_selected_details(
                 memory.resources.len(),
                 memory.rest_zones.len()
             ));
-        }
-        if let Some(decision) = decision {
-            ui.label(format!(
-                "Decision: {:?} score {:.2} target {:?}",
-                decision.action, decision.score, decision.target
-            ));
-        }
-        if let Some(debug) = debug {
-            for (action, score) in &debug.last_scores {
-                ui.add(egui::ProgressBar::new(*score).text(format!("{action:?} {score:.2}")));
-            }
         }
         return;
     }
@@ -405,6 +419,163 @@ fn draw_selected_details(
             );
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum NeedBarKind {
+    Hunger,
+    Fatigue,
+    Energy,
+}
+
+fn draw_need_bar_row(ui: &mut egui::Ui, label: &str, value: f32, kind: NeedBarKind) {
+    const LABEL_WIDTH: f32 = 80.0;
+    const BAR_WIDTH: f32 = 200.0;
+    const BAR_HEIGHT: f32 = 14.0;
+    const VALUE_WIDTH: f32 = 44.0;
+    const MARKERS: [f32; 2] = [0.6, 0.85];
+
+    let visuals = ui.visuals();
+    let text_color = visuals.widgets.noninteractive.fg_stroke.color;
+    let track_color = visuals.faint_bg_color;
+    let border_color = visuals.widgets.noninteractive.bg_stroke.color;
+    let value = value.clamp(0.0, 1.0);
+    let fill_color = need_bar_color(kind, value);
+    let fill_ratio = match kind {
+        NeedBarKind::Energy => value,
+        NeedBarKind::Hunger | NeedBarKind::Fatigue => value,
+    };
+
+    ui.horizontal(|ui| {
+        ui.add_sized(
+            [LABEL_WIDTH, BAR_HEIGHT],
+            egui::Label::new(egui::RichText::new(label).color(text_color)),
+        );
+
+        let (rect, _) =
+            ui.allocate_exact_size(egui::vec2(BAR_WIDTH, BAR_HEIGHT), egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        let rounding = egui::Rounding::same(3.0);
+        painter.rect_filled(rect, rounding, track_color);
+
+        let fill_width = (rect.width() * fill_ratio).clamp(0.0, rect.width());
+        if fill_width > 0.0 {
+            let fill_rect = egui::Rect::from_min_max(
+                rect.min,
+                egui::pos2(rect.min.x + fill_width, rect.max.y),
+            );
+            painter.rect_filled(fill_rect, rounding, fill_color);
+        }
+
+        for marker in MARKERS {
+            let x = rect.left() + rect.width() * marker;
+            painter.line_segment(
+                [egui::pos2(x, rect.top() + 1.0), egui::pos2(x, rect.bottom() - 1.0)],
+                egui::Stroke::new(1.0, egui::Color32::from_white_alpha(128)),
+            );
+        }
+        painter.rect_stroke(
+            rect,
+            rounding,
+            egui::Stroke::new(1.0, border_color),
+        );
+
+        ui.allocate_ui_with_layout(
+            egui::vec2(VALUE_WIDTH, BAR_HEIGHT),
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                ui.label(format!("{:.0}%", value * 100.0));
+            },
+        );
+    });
+}
+
+fn draw_action_badge(ui: &mut egui::Ui, action: ActionKind) {
+    let visuals = ui.visuals();
+    let fill = action_badge_color(action, visuals);
+    let stroke = visuals.widgets.noninteractive.bg_stroke.color;
+    let text_color = visuals.widgets.noninteractive.fg_stroke.color;
+    let label = action_name(action);
+    let galley = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        egui::FontId::proportional(11.0),
+        text_color,
+    );
+    let size = galley.size() + egui::vec2(12.0, 6.0);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, egui::Rounding::same(3.0), fill);
+    painter.rect_stroke(
+        rect,
+        egui::Rounding::same(3.0),
+        egui::Stroke::new(1.0, stroke),
+    );
+    painter.galley(
+        rect.center() - galley.size() * 0.5,
+        galley,
+        text_color,
+    );
+}
+
+fn need_bar_color(kind: NeedBarKind, value: f32) -> egui::Color32 {
+    match kind {
+        NeedBarKind::Hunger => {
+            let green = egui::Color32::from_rgb(0x23, 0x86, 0x36);
+            let orange = egui::Color32::from_rgb(0xf4, 0xa2, 0x61);
+            let red = egui::Color32::from_rgb(0xe6, 0x39, 0x46);
+            if value <= 0.6 {
+                lerp_color(green, orange, value / 0.6)
+            } else {
+                lerp_color(orange, red, ((value - 0.6) / 0.25).clamp(0.0, 1.0))
+            }
+        }
+        NeedBarKind::Fatigue => {
+            let green = egui::Color32::from_rgb(0x23, 0x86, 0x36);
+            let purple = egui::Color32::from_rgb(0x99, 0x5d, 0xe5);
+            lerp_color(green, purple, value)
+        }
+        NeedBarKind::Energy => {
+            let orange = egui::Color32::from_rgb(0xf4, 0xa2, 0x61);
+            let green = egui::Color32::from_rgb(0x23, 0x86, 0x36);
+            lerp_color(orange, green, value)
+        }
+    }
+}
+
+fn action_badge_color(action: ActionKind, visuals: &egui::Visuals) -> egui::Color32 {
+    match action {
+        ActionKind::Eat => visuals.warn_fg_color,
+        ActionKind::Rest => egui::Color32::from_rgb(0x99, 0x5d, 0xe5),
+        ActionKind::Explore => egui::Color32::from_rgb(0xf0, 0xc7, 0x32),
+        ActionKind::Idle => visuals.faint_bg_color,
+        ActionKind::MoveTo => visuals.hyperlink_color,
+        ActionKind::Collect => visuals.selection.bg_fill,
+        ActionKind::Deliver => egui::Color32::from_rgb(0x1f, 0x6f, 0xeb),
+    }
+}
+
+fn action_name(action: ActionKind) -> &'static str {
+    match action {
+        ActionKind::Idle => "Idle",
+        ActionKind::MoveTo => "MoveTo",
+        ActionKind::Eat => "Eat",
+        ActionKind::Rest => "Rest",
+        ActionKind::Deliver => "Deliver",
+        ActionKind::Explore => "Explore",
+        ActionKind::Collect => "Collect",
+    }
+}
+
+fn lerp_color(from: egui::Color32, to: egui::Color32, t: f32) -> egui::Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let from = egui::Rgba::from(from);
+    let to = egui::Rgba::from(to);
+    egui::Color32::from(egui::Rgba::from_rgba_unmultiplied(
+        from.r() + (to.r() - from.r()) * t,
+        from.g() + (to.g() - from.g()) * t,
+        from.b() + (to.b() - from.b()) * t,
+        from.a() + (to.a() - from.a()) * t,
+    ))
 }
 
 fn format_position(position: Vec3) -> String {
