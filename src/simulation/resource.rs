@@ -9,6 +9,7 @@ use crate::engine::SimulationTime;
 use crate::simulation::events::{
     ResourceConsumed, ResourceDelivered, ResourceDepleted, ResourceReplenished,
 };
+use crate::simulation::rules::{CompetitionFactor, RegenPressureMultiplier};
 use crate::simulation::{Agent, AgentState, Needs, SimulationConfig, StateKind, Zone, ZoneKind};
 
 const RESOURCE_CONSUME_RATE: f32 = 18.0;
@@ -22,6 +23,7 @@ type ForagingAgentQueryItem<'w> = (
     &'w Transform,
     &'w Needs,
     &'w DecisionOutput,
+    Option<&'w CompetitionFactor>,
     Option<&'w CarriedResource>,
 );
 
@@ -116,6 +118,7 @@ impl ResourceNode {
 pub fn resource_regen_system(
     sim_time: Res<SimulationTime>,
     config: Res<SimulationConfig>,
+    regen_pressure: Option<Res<RegenPressureMultiplier>>,
     mut query: Query<(Entity, &mut ResourceNode)>,
     mut replenished_events: EventWriter<ResourceReplenished>,
 ) {
@@ -124,11 +127,12 @@ pub fn resource_regen_system(
     }
 
     let dt = crate::engine::time::FIXED_TIMESTEP;
+    let regen_pressure = regen_pressure.map_or(1.0, |pressure| pressure.0);
 
     for (entity, mut resource) in &mut query {
         let before_depleted = resource.is_depleted;
         resource.amount = (resource.amount
-            + resource.regen_rate * config.global_regen_multiplier * dt)
+            + resource.regen_rate * config.global_regen_multiplier * regen_pressure * dt)
             .min(resource.max_amount);
 
         if before_depleted
@@ -157,7 +161,7 @@ pub fn resource_consume_system(
 
     let dt = crate::engine::time::FIXED_TIMESTEP;
 
-    for (agent, agent_transform, needs, decision, carried) in &mut agents {
+    for (agent, agent_transform, needs, decision, competition, carried) in &mut agents {
         if let Some(cargo) = carried {
             if let Some((zone, accepted)) =
                 deposit_in_current_village(agent_transform.translation, cargo, &mut zones)
@@ -202,7 +206,9 @@ pub fn resource_consume_system(
             continue;
         }
 
-        let desired = (needs.hunger * RESOURCE_CONSUME_RATE * dt).max(CARRY_CAPACITY);
+        let competition_factor = competition.map_or(1.0, |factor| factor.0);
+        let desired =
+            (needs.hunger * RESOURCE_CONSUME_RATE * dt).max(CARRY_CAPACITY) * competition_factor;
         let amount = desired.min(resource.amount);
         if amount <= f32::EPSILON {
             continue;

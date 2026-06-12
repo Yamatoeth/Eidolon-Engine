@@ -19,6 +19,7 @@ pub use events::{
     ResourceDelivered, ResourceDepleted, ResourceReplenished, ThresholdLevel,
 };
 pub use resource::{CarriedResource, ResourceKind, ResourceNode, VillageStore};
+pub use rules::{CompetitionFactor, RegenPressureMultiplier};
 pub use spatial::{Collider, GridCell, SpatialGrid};
 pub use world::{NeedsDecayRates, SimulationConfig, Zone, ZoneId, ZoneKind};
 
@@ -31,6 +32,7 @@ impl Plugin for SimulationPlugin {
             .init_resource::<SimRng>()
             .init_resource::<SpatialGrid>()
             .init_resource::<SimulationMetrics>()
+            .init_resource::<rules::RegenPressureMultiplier>()
             .add_event::<NeedThresholdReached>()
             .add_event::<AgentDied>()
             .add_event::<AgentSpawned>()
@@ -42,10 +44,13 @@ impl Plugin for SimulationPlugin {
                 FixedUpdate,
                 (
                     agent::needs_decay_system,
+                    rules::needs_cascade_system,
+                    rules::population_pressure_system,
                     resource::resource_regen_system,
                     spatial::spatial_grid_update_system,
                     agent::agent_state_transition_system,
                     agent::agent_movement_system,
+                    rules::resource_competition_system,
                     resource::resource_consume_system,
                     resource::rest_recovery_system,
                     agent::agent_death_system,
