@@ -4,6 +4,8 @@ use bevy::prelude::*;
 
 use crate::engine::render::DebugGridConfig;
 use crate::engine::time::SimulationTime;
+use crate::scenarios::loader::ScenarioLoadRequested;
+use crate::scenarios::presets::ScenarioPreset;
 
 /// Engine-level actions produced from raw input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -20,6 +22,8 @@ pub enum EngineAction {
     ToggleOverlays,
     /// Toggle the engine debug grid overlay.
     ToggleDebugGrid,
+    /// Load a hardcoded scenario preset.
+    LoadPreset(ScenarioPreset),
 }
 
 /// Event emitted when an input mapping activates an engine action.
@@ -45,6 +49,22 @@ impl Default for InputMap {
                 (KeyCode::F2, EngineAction::ToggleTimeline),
                 (KeyCode::F3, EngineAction::ToggleOverlays),
                 (KeyCode::KeyG, EngineAction::ToggleDebugGrid),
+                (
+                    KeyCode::Digit1,
+                    EngineAction::LoadPreset(ScenarioPreset::Equilibrium),
+                ),
+                (
+                    KeyCode::Digit2,
+                    EngineAction::LoadPreset(ScenarioPreset::Scarcity),
+                ),
+                (
+                    KeyCode::Digit3,
+                    EngineAction::LoadPreset(ScenarioPreset::Overpopulation),
+                ),
+                (
+                    KeyCode::Digit4,
+                    EngineAction::LoadPreset(ScenarioPreset::StressTest),
+                ),
             ],
         }
     }
@@ -85,12 +105,18 @@ pub fn apply_engine_actions(
     mut events: EventReader<EngineActionEvent>,
     mut sim_time: ResMut<SimulationTime>,
     mut debug_grid: ResMut<DebugGridConfig>,
+    mut scenario_load_requests: EventWriter<ScenarioLoadRequested>,
 ) {
     for event in events.read() {
         match event.action {
             EngineAction::TogglePause => sim_time.toggle_pause(),
             EngineAction::ResetSimulationTime => *sim_time = SimulationTime::new(),
             EngineAction::ToggleDebugGrid => debug_grid.enabled = !debug_grid.enabled,
+            EngineAction::LoadPreset(preset) => {
+                scenario_load_requests.send(ScenarioLoadRequested {
+                    key: preset.to_scenario_name().to_owned(),
+                });
+            },
             EngineAction::ToggleInspector
             | EngineAction::ToggleTimeline
             | EngineAction::ToggleOverlays => {},
@@ -127,6 +153,18 @@ mod tests {
         assert_eq!(
             input_map.actions_for_key(KeyCode::KeyG).collect::<Vec<_>>(),
             vec![EngineAction::ToggleDebugGrid]
+        );
+        assert_eq!(
+            input_map
+                .actions_for_key(KeyCode::Digit1)
+                .collect::<Vec<_>>(),
+            vec![EngineAction::LoadPreset(ScenarioPreset::Equilibrium)]
+        );
+        assert_eq!(
+            input_map
+                .actions_for_key(KeyCode::Digit4)
+                .collect::<Vec<_>>(),
+            vec![EngineAction::LoadPreset(ScenarioPreset::StressTest)]
         );
     }
 }

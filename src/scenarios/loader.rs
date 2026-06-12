@@ -460,6 +460,7 @@ fn parse_arg<'a>(input: &'a str, name: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scenarios::presets::ScenarioPreset;
 
     #[test]
     fn parses_equilibrium_scenario() {
@@ -482,5 +483,22 @@ mod tests {
             parse_timed_event_kind("SetDecayMultiplier(1.3)"),
             Some(TimedEventKind::SetDecayMultiplier(1.3))
         );
+    }
+
+    #[test]
+    fn scenario_catalog_contains_all_hotkey_presets() {
+        let catalog = load_scenario_catalog_from_path(SCENARIO_INDEX_PATH)
+            .expect("scenario catalog should load");
+
+        for preset in ScenarioPreset::all() {
+            assert!(
+                catalog
+                    .entries
+                    .iter()
+                    .any(|entry| entry.key == preset.to_scenario_name()),
+                "missing scenario preset {}",
+                preset.to_scenario_name()
+            );
+        }
     }
 }

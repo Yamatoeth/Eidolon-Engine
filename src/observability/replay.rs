@@ -6,6 +6,7 @@ use bevy_inspector_egui::bevy_egui::{egui, EguiContexts};
 use crate::engine::SimulationTime;
 use crate::observability::inspector::ObservabilityConfig;
 use crate::scenarios::loader::{ScenarioCatalog, ScenarioLoadRequested};
+use crate::scenarios::presets::ScenarioPreset;
 use crate::simulation::{Agent, AgentId, AgentState, Needs, ResourceNode, StateKind};
 
 /// Snapshot of one agent.
@@ -173,6 +174,7 @@ pub fn replay_ui_system(
                 "Frames: {frame_count}  Recording: {}  Replay: {}",
                 replay.is_recording, replay.is_replaying
             ));
+            draw_active_preset(ui, catalog.as_deref());
 
             if frame_count > 0 {
                 let max_index = frame_count - 1;
@@ -188,4 +190,30 @@ pub fn replay_ui_system(
                 }
             }
         });
+}
+
+fn draw_active_preset(ui: &mut egui::Ui, catalog: Option<&ScenarioCatalog>) {
+    let Some(catalog) = catalog else {
+        ui.small("Preset: unavailable");
+        return;
+    };
+
+    let Some(active_key) = catalog.active_key.as_deref() else {
+        ui.small("Preset: none");
+        return;
+    };
+
+    if let Some(preset) = ScenarioPreset::from_scenario_name(active_key) {
+        ui.separator();
+        ui.label(format!("Preset: {}", preset.to_scenario_name()));
+        ui.small(preset.label());
+    } else if let Some(entry) = catalog
+        .entries
+        .iter()
+        .find(|entry| entry.key.as_str() == active_key)
+    {
+        ui.separator();
+        ui.label(format!("Scenario: {}", entry.config.name));
+        ui.small(&entry.config.description);
+    }
 }

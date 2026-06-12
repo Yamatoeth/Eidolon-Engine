@@ -88,7 +88,8 @@ pub fn handle_observability_actions(
             EngineAction::ToggleOverlays => config.overlays_enabled = !config.overlays_enabled,
             EngineAction::TogglePause
             | EngineAction::ResetSimulationTime
-            | EngineAction::ToggleDebugGrid => {},
+            | EngineAction::ToggleDebugGrid
+            | EngineAction::LoadPreset(_) => {},
         }
     }
 }
