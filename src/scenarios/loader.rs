@@ -7,6 +7,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::scenarios::builder::{spawn_agent_at_position, spawn_scenario_world, ScenarioSpawned};
+use crate::scenarios::presets::ScenarioPreset;
 use crate::simulation::{
     AgentId, AgentSpawned, NeedsDecayRates, SimRng, SimulationConfig, ZoneKind,
 };
@@ -154,6 +155,15 @@ pub struct ActiveScenario {
     pub config: ScenarioConfig,
 }
 
+/// Display label for the currently active scenario.
+#[derive(Resource, Clone, Debug, Default, PartialEq)]
+pub struct ActiveScenarioLabel {
+    /// Short display name.
+    pub name: String,
+    /// Human-readable description.
+    pub description: String,
+}
+
 /// Registered scenario available in the selector.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScenarioCatalogEntry {
@@ -229,6 +239,20 @@ pub fn load_scenario_catalog_from_path(path: impl AsRef<Path>) -> anyhow::Result
     })
 }
 
+fn active_scenario_label(key: &str, config: &ScenarioConfig) -> ActiveScenarioLabel {
+    if let Some(preset) = ScenarioPreset::from_scenario_name(key) {
+        ActiveScenarioLabel {
+            name: preset.to_scenario_name().to_owned(),
+            description: preset.label().to_owned(),
+        }
+    } else {
+        ActiveScenarioLabel {
+            name: config.name.clone(),
+            description: config.description.clone(),
+        }
+    }
+}
+
 /// Load and install the default scenario resource.
 pub fn load_default_scenario_system(
     mut commands: Commands,
@@ -248,6 +272,7 @@ pub fn load_default_scenario_system(
                 *sim_config = config.simulation_config();
                 sim_rng.reseed(config.seed);
                 catalog.active_key = Some(entry.key.clone());
+                commands.insert_resource(active_scenario_label(&entry.key, &config));
                 commands.insert_resource(ActiveScenario { config });
                 commands.insert_resource(ScenarioEventState {
                     scenario_key: Some(entry.key.clone()),
@@ -263,6 +288,14 @@ pub fn load_default_scenario_system(
                 Ok(config) => {
                     *sim_config = config.simulation_config();
                     sim_rng.reseed(config.seed);
+                    commands.insert_resource(ActiveScenarioLabel {
+                        name: Path::new(DEFAULT_SCENARIO_PATH)
+                            .file_stem()
+                            .and_then(|stem| stem.to_str())
+                            .unwrap_or_default()
+                            .to_owned(),
+                        description: String::new(),
+                    });
                     commands.insert_resource(ActiveScenario { config });
                 },
                 Err(error) => error!("{error}"),
@@ -307,6 +340,7 @@ pub fn apply_scenario_load_requests_system(
         *sim_time = crate::engine::SimulationTime::new();
         active_scenario.config = config.clone();
         catalog.active_key = Some(entry.key.clone());
+        commands.insert_resource(active_scenario_label(&entry.key, &config));
         commands.insert_resource(ScenarioEventState {
             scenario_key: Some(entry.key),
             executed_indices: Vec::new(),

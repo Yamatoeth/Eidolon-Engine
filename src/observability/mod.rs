@@ -31,6 +31,7 @@ impl Plugin for ObservabilityPlugin {
                 .init_resource::<inspector::InspectorState>()
                 .init_resource::<timeline::EventTimeline>()
                 .init_resource::<replay::ReplayBuffer>()
+                .init_resource::<hud::ScenarioIndicatorState>()
                 .add_systems(
                     Update,
                     (
@@ -43,6 +44,8 @@ impl Plugin for ObservabilityPlugin {
                         timeline::timeline_ui_system,
                         replay::replay_ui_system,
                         hud::hud_metrics_system,
+                        hud::legend_ui_system,
+                        hud::scenario_indicator_system,
                     )
                         .chain(),
                 )
@@ -58,7 +61,13 @@ impl Plugin for ObservabilityPlugin {
 
         #[cfg(feature = "debug_overlays")]
         {
-            app.add_systems(Update, overlays::static_world_overlay_system);
+            app.add_systems(
+                Update,
+                (
+                    overlays::static_world_overlay_system,
+                    overlays::agent_need_bars_system,
+                ),
+            );
         }
 
         #[cfg(not(feature = "observability"))]
