@@ -8,6 +8,8 @@ use bevy::prelude::*;
 use bevy_inspector_egui::{bevy_egui::EguiPlugin, DefaultInspectorConfigPlugin};
 
 #[cfg(feature = "observability")]
+pub mod hud;
+#[cfg(feature = "observability")]
 pub mod inspector;
 #[cfg(feature = "debug_overlays")]
 pub mod overlays;
@@ -40,6 +42,7 @@ impl Plugin for ObservabilityPlugin {
                         inspector::scenario_selector_ui_system,
                         timeline::timeline_ui_system,
                         replay::replay_ui_system,
+                        hud::hud_metrics_system,
                     )
                         .chain(),
                 )
