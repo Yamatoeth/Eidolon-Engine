@@ -11,7 +11,7 @@ use crate::ai::utility::{AIConfig, ScoringContext};
 use crate::engine::SimulationTime;
 use crate::simulation::{
     Agent, AgentState, CarriedResource, Needs, ResourceKind, ResourceNode, SimRng, SpatialGrid,
-    Zone, ZoneKind,
+    VillageStore, Zone, ZoneKind,
 };
 
 type AIAgentQueryItem<'w> = (
@@ -139,6 +139,8 @@ pub struct PerceptionData {
     pub visible_resources: Vec<VisibleResource>,
     /// Nearest rest zone inside perception range.
     pub nearest_rest_zone: Option<VisibleZone>,
+    /// Nearest village store inside perception range.
+    pub nearest_village_store: Option<VisibleZone>,
     /// Current zone containing the agent, if any.
     pub current_zone: Option<VisibleZone>,
 }
@@ -184,6 +186,7 @@ pub fn ai_scoring_system(
     mut agents: Query<AIAgentQueryItem>,
     resources: Query<(Entity, &Transform, &ResourceNode)>,
     zones: Query<(Entity, &Transform, &Zone)>,
+    stores: Query<(Entity, &Transform, &VillageStore)>,
 ) {
     if sim_time.paused {
         return;
@@ -214,6 +217,7 @@ pub fn ai_scoring_system(
             &spatial_grid,
             &resources,
             &zones,
+            &stores,
         );
         let explore_target =
             transform.translation + rng.next_xz_direction() * config.perception_radius * 0.5;
@@ -265,6 +269,7 @@ pub fn build_perception(
     spatial_grid: &SpatialGrid,
     resources: &Query<(Entity, &Transform, &ResourceNode)>,
     zones: &Query<(Entity, &Transform, &Zone)>,
+    stores: &Query<(Entity, &Transform, &VillageStore)>,
 ) -> PerceptionData {
     let mut perception = PerceptionData::default();
 
@@ -310,6 +315,25 @@ pub fn build_perception(
             .map_or(true, |nearest| distance < nearest.distance)
         {
             perception.nearest_rest_zone = Some(zone_entry);
+        }
+    }
+
+    for (entity, transform, _store) in stores.iter() {
+        let distance = position.distance(transform.translation);
+        if distance > rest_zone_radius {
+            continue;
+        }
+        let store_entry = VisibleZone {
+            entity,
+            position: transform.translation,
+            kind: ZoneKind::Rest,
+            distance,
+        };
+        if perception
+            .nearest_village_store
+            .map_or(true, |nearest| distance < nearest.distance)
+        {
+            perception.nearest_village_store = Some(store_entry);
         }
     }
 

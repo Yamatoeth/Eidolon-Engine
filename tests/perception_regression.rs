@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use emergent_sim::{
     ai::decision::build_perception,
-    simulation::{ResourceNode, SpatialGrid, Zone, ZoneId, ZoneKind},
+    simulation::{ResourceNode, SpatialGrid, VillageStore, Zone, ZoneId, ZoneKind},
 };
 
 #[derive(Resource)]
@@ -49,6 +49,7 @@ fn capture_rest_zone_perception(
     spatial_grid: Res<SpatialGrid>,
     resources: Query<(Entity, &Transform, &ResourceNode)>,
     zones: Query<(Entity, &Transform, &Zone)>,
+    stores: Query<(Entity, &Transform, &VillageStore)>,
     mut perceived: ResMut<PerceivedRestZone>,
 ) {
     perceived.0 = build_perception(
@@ -59,6 +60,7 @@ fn capture_rest_zone_perception(
         &spatial_grid,
         &resources,
         &zones,
+        &stores,
     )
     .nearest_rest_zone
     .map(|zone| zone.entity);

@@ -3,15 +3,17 @@
 use bevy::prelude::*;
 
 use crate::engine::SimulationTime;
-use crate::simulation::{Agent, Needs, ResourceNode, SimulationConfig, SimulationMetrics};
+use crate::simulation::{
+    Agent, AgentState, Needs, ResourceNode, SimulationConfig, SimulationMetrics, StateKind,
+};
 
 const RESOURCE_COMPETITION_RADIUS: f32 = 8.0;
 const MIN_COMPETING_AGENTS: usize = 3;
 const MAX_COMPETITION_DIVISOR: usize = 4;
-const HIGH_POPULATION_THRESHOLD: u32 = 15;
-const LOW_POPULATION_THRESHOLD: u32 = 5;
-const HIGH_POPULATION_REGEN_MULTIPLIER: f32 = 0.6;
-const LOW_POPULATION_REGEN_MULTIPLIER: f32 = 1.4;
+const HIGH_POPULATION_THRESHOLD: u32 = 20;
+const LOW_POPULATION_THRESHOLD: u32 = 6;
+const HIGH_POPULATION_REGEN_MULTIPLIER: f32 = 0.65;
+const LOW_POPULATION_REGEN_MULTIPLIER: f32 = 1.5;
 
 /// Consumption multiplier applied to agents under resource competition pressure.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -37,7 +39,7 @@ impl Default for RegenPressureMultiplier {
 pub fn needs_cascade_system(
     sim_time: Res<SimulationTime>,
     config: Res<SimulationConfig>,
-    mut agents: Query<&mut Needs, With<Agent>>,
+    mut agents: Query<(&mut Needs, &AgentState), With<Agent>>,
 ) {
     if sim_time.paused {
         return;
@@ -46,7 +48,7 @@ pub fn needs_cascade_system(
     let dt = crate::engine::time::FIXED_TIMESTEP;
     let fatigue_rate = config.needs_decay_rates.fatigue_per_sec * config.global_decay_multiplier;
 
-    for mut needs in &mut agents {
+    for (mut needs, state) in &mut agents {
         let extra_multiplier = if needs.hunger >= 0.9 {
             1.0
         } else if needs.hunger >= 0.7 {
@@ -55,7 +57,7 @@ pub fn needs_cascade_system(
             0.0
         };
 
-        if extra_multiplier > 0.0 {
+        if state.current != StateKind::Resting && extra_multiplier > 0.0 {
             needs.fatigue = (needs.fatigue + fatigue_rate * extra_multiplier * dt).clamp(0.0, 1.0);
         }
     }

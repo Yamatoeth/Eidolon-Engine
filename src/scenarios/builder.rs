@@ -108,7 +108,7 @@ fn spawn_zone(
         ..default()
     });
 
-    let mut entity = commands.spawn((
+    commands.spawn((
         Zone {
             id,
             kind: zone.kind,
@@ -124,9 +124,31 @@ fn spawn_zone(
     ));
 
     if zone.kind == ZoneKind::Rest {
-        entity.insert(VillageStore::new(zone.radius * 18.0));
+        spawn_village_store(commands, meshes, materials, zone.center);
         spawn_village_decor(commands, meshes, materials, zone.center, zone.radius);
     }
+}
+
+fn spawn_village_store(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    center: Vec3,
+) {
+    commands.spawn((
+        VillageStore {
+            food_amount: 150.0,
+            max_capacity: 1000.0,
+            radius: 3.0,
+        },
+        Transform::from_translation(center),
+        ScenarioSpawned,
+        Mesh3d(meshes.add(Cylinder::new(1.5, 0.2).mesh().resolution(32))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.545, 0.271, 0.075),
+            ..default()
+        })),
+    ));
 }
 
 fn spawn_resource_nodes(

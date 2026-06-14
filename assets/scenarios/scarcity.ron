@@ -22,7 +22,7 @@
     resources: (
         nodes_per_resource_zone: 2,
         initial_amount_fraction: 0.3,
-        regen_rate: 0.1,
+        regen_rate: 0.8,
     ),
     
     sim_overrides: (

@@ -27,11 +27,11 @@
     resources: (
         nodes_per_resource_zone: 4,
         initial_amount_fraction: 1.0,
-        regen_rate: 0.75,
+        regen_rate: 1.5,
     ),
 
     sim_overrides: (
-        global_decay_multiplier: 0.8,
+        global_decay_multiplier: 2.5,
         global_regen_multiplier: 1.2,
     ),
 

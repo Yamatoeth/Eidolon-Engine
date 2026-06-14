@@ -125,6 +125,7 @@ pub fn click_to_inspect_system(
     agents: Query<(Entity, &Transform), With<Agent>>,
     resources: Query<(Entity, &Transform), With<ResourceNode>>,
     zones: Query<(Entity, &Transform, &Zone)>,
+    stores: Query<(Entity, &Transform), With<VillageStore>>,
 ) {
     if !mouse_buttons.just_pressed(MouseButton::Left) {
         return;
@@ -134,7 +135,7 @@ pub fn click_to_inspect_system(
         return;
     };
 
-    state.selected = nearest_entity(point, &agents, &resources, &zones);
+    state.selected = nearest_entity(point, &agents, &resources, &zones, &stores);
 }
 
 /// Draw the inspector entity browser and detail panel.
@@ -144,7 +145,8 @@ pub fn inspector_ui_system(
     mut state: ResMut<InspectorState>,
     sim_time: Res<SimulationTime>,
     metrics: Res<SimulationMetrics>,
-    zones: Query<(Entity, &Zone, &Transform, Option<&VillageStore>)>,
+    zones: Query<(Entity, &Zone, &Transform)>,
+    stores: Query<(Entity, &VillageStore, &Transform)>,
     resources: Query<(Entity, &ResourceNode, &Transform)>,
     agents: Query<(Entity, AgentInspectorItem<'_>, &Transform)>,
 ) {
@@ -184,13 +186,14 @@ pub fn inspector_ui_system(
             egui::ScrollArea::vertical()
                 .max_height(260.0)
                 .show(ui, |ui| {
-                    draw_entity_list(ui, &mut state, &agents, &resources, &zones);
+                    draw_entity_list(ui, &mut state, &agents, &resources, &zones, &stores);
                 });
             ui.separator();
-            draw_selected_details(ui, state.selected, &agents, &resources, &zones);
+            draw_selected_details(ui, state.selected, &agents, &resources, &zones, &stores);
             ui.separator();
             ui.heading("World");
             ui.label(format!("Zones: {}", zones.iter().count()));
+            ui.label(format!("Village stores: {}", stores.iter().count()));
             ui.label(format!("Resource nodes: {}", resources.iter().count()));
         });
 }
@@ -218,7 +221,8 @@ fn draw_entity_list(
     state: &mut InspectorState,
     agents: &Query<(Entity, AgentInspectorItem<'_>, &Transform)>,
     resources: &Query<(Entity, &ResourceNode, &Transform)>,
-    zones: &Query<(Entity, &Zone, &Transform, Option<&VillageStore>)>,
+    zones: &Query<(Entity, &Zone, &Transform)>,
+    stores: &Query<(Entity, &VillageStore, &Transform)>,
 ) {
     if matches!(state.filter, InspectorFilter::All | InspectorFilter::Agents) {
         for (
@@ -266,15 +270,20 @@ fn draw_entity_list(
     }
 
     if matches!(state.filter, InspectorFilter::All | InspectorFilter::Zones) {
-        for (entity, zone, _transform, store) in zones.iter() {
-            let label = if let Some(store) = store {
-                format!(
-                    "Zone {:?} radius {:.1} food {:.1}/{:.1}",
-                    zone.kind, zone.radius, store.food, store.capacity
-                )
-            } else {
-                format!("Zone {:?} radius {:.1}", zone.kind, zone.radius)
-            };
+        for (entity, zone, _transform) in zones.iter() {
+            let label = format!("Zone {:?} radius {:.1}", zone.kind, zone.radius);
+            if ui
+                .selectable_label(state.selected == Some(entity), label)
+                .clicked()
+            {
+                state.selected = Some(entity);
+            }
+        }
+        for (entity, store, _transform) in stores.iter() {
+            let label = format!(
+                "VillageStore food {:.1}/{:.1} radius {:.1}",
+                store.food_amount, store.max_capacity, store.radius
+            );
             if ui
                 .selectable_label(state.selected == Some(entity), label)
                 .clicked()
@@ -318,7 +327,8 @@ fn draw_selected_details(
     selected: Option<Entity>,
     agents: &Query<(Entity, AgentInspectorItem<'_>, &Transform)>,
     resources: &Query<(Entity, &ResourceNode, &Transform)>,
-    zones: &Query<(Entity, &Zone, &Transform, Option<&VillageStore>)>,
+    zones: &Query<(Entity, &Zone, &Transform)>,
+    stores: &Query<(Entity, &VillageStore, &Transform)>,
 ) {
     let Some(selected) = selected else {
         ui.label("No entity selected");
@@ -405,19 +415,29 @@ fn draw_selected_details(
         return;
     }
 
-    if let Ok((_entity, zone, transform, store)) = zones.get(selected) {
+    if let Ok((_entity, zone, transform)) = zones.get(selected) {
         ui.label(format!("Zone {:?}", zone.kind));
         ui.label(format!(
             "Position: {}",
             format_position(transform.translation)
         ));
         ui.label(format!("Radius: {:.1}", zone.radius));
-        if let Some(store) = store {
-            ui.add(
-                egui::ProgressBar::new(store.food / store.capacity.max(1.0))
-                    .text(format!("food {:.1}/{:.1}", store.food, store.capacity)),
-            );
-        }
+        return;
+    }
+
+    if let Ok((_entity, store, transform)) = stores.get(selected) {
+        ui.label("Village Store");
+        ui.label(format!(
+            "Position: {}",
+            format_position(transform.translation)
+        ));
+        ui.label(format!("Radius: {:.1}", store.radius));
+        ui.add(
+            egui::ProgressBar::new(store.food_amount / store.max_capacity.max(1.0)).text(format!(
+                "food {:.1}/{:.1}",
+                store.food_amount, store.max_capacity
+            )),
+        );
     }
 }
 
@@ -460,25 +480,22 @@ fn draw_need_bar_row(ui: &mut egui::Ui, label: &str, value: f32, kind: NeedBarKi
 
         let fill_width = (rect.width() * fill_ratio).clamp(0.0, rect.width());
         if fill_width > 0.0 {
-            let fill_rect = egui::Rect::from_min_max(
-                rect.min,
-                egui::pos2(rect.min.x + fill_width, rect.max.y),
-            );
+            let fill_rect =
+                egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + fill_width, rect.max.y));
             painter.rect_filled(fill_rect, rounding, fill_color);
         }
 
         for marker in MARKERS {
             let x = rect.left() + rect.width() * marker;
             painter.line_segment(
-                [egui::pos2(x, rect.top() + 1.0), egui::pos2(x, rect.bottom() - 1.0)],
+                [
+                    egui::pos2(x, rect.top() + 1.0),
+                    egui::pos2(x, rect.bottom() - 1.0),
+                ],
                 egui::Stroke::new(1.0, egui::Color32::from_white_alpha(128)),
             );
         }
-        painter.rect_stroke(
-            rect,
-            rounding,
-            egui::Stroke::new(1.0, border_color),
-        );
+        painter.rect_stroke(rect, rounding, egui::Stroke::new(1.0, border_color));
 
         ui.allocate_ui_with_layout(
             egui::vec2(VALUE_WIDTH, BAR_HEIGHT),
@@ -510,11 +527,7 @@ fn draw_action_badge(ui: &mut egui::Ui, action: ActionKind) {
         egui::Rounding::same(3.0),
         egui::Stroke::new(1.0, stroke),
     );
-    painter.galley(
-        rect.center() - galley.size() * 0.5,
-        galley,
-        text_color,
-    );
+    painter.galley(rect.center() - galley.size() * 0.5, galley, text_color);
 }
 
 fn need_bar_color(kind: NeedBarKind, value: f32) -> egui::Color32 {
@@ -528,17 +541,17 @@ fn need_bar_color(kind: NeedBarKind, value: f32) -> egui::Color32 {
             } else {
                 lerp_color(orange, red, ((value - 0.6) / 0.25).clamp(0.0, 1.0))
             }
-        }
+        },
         NeedBarKind::Fatigue => {
             let green = egui::Color32::from_rgb(0x23, 0x86, 0x36);
             let purple = egui::Color32::from_rgb(0x99, 0x5d, 0xe5);
             lerp_color(green, purple, value)
-        }
+        },
         NeedBarKind::Energy => {
             let orange = egui::Color32::from_rgb(0xf4, 0xa2, 0x61);
             let green = egui::Color32::from_rgb(0x23, 0x86, 0x36);
             lerp_color(orange, green, value)
-        }
+        },
     }
 }
 
@@ -601,6 +614,7 @@ fn nearest_entity(
     agents: &Query<(Entity, &Transform), With<Agent>>,
     resources: &Query<(Entity, &Transform), With<ResourceNode>>,
     zones: &Query<(Entity, &Transform, &Zone)>,
+    stores: &Query<(Entity, &Transform), With<VillageStore>>,
 ) -> Option<Entity> {
     let mut nearest = None;
     let mut nearest_distance = f32::MAX;
@@ -631,6 +645,16 @@ fn nearest_entity(
             entity,
             transform.translation,
             zone.radius,
+            &mut nearest,
+            &mut nearest_distance,
+        );
+    }
+    for (entity, transform) in stores.iter() {
+        update_nearest(
+            point,
+            entity,
+            transform.translation,
+            3.0,
             &mut nearest,
             &mut nearest_distance,
         );

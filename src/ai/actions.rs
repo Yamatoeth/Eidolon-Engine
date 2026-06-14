@@ -96,7 +96,7 @@ pub fn score_deliver(ctx: &ScoringContext<'_>) -> ActionScore {
     let Some(cargo) = ctx.carried_resource else {
         return ActionScore::new(ActionKind::Deliver, 0.0, None, None);
     };
-    let Some(rest_zone) = ctx.perception.nearest_rest_zone else {
+    let Some(store) = ctx.perception.nearest_village_store else {
         return ActionScore::new(ActionKind::Deliver, 0.0, None, None);
     };
 
@@ -109,8 +109,8 @@ pub fn score_deliver(ctx: &ScoringContext<'_>) -> ActionScore {
     ActionScore::new(
         ActionKind::Deliver,
         cargo_urgency,
-        Some(rest_zone.entity),
-        Some(rest_zone.position),
+        Some(store.entity),
+        Some(store.position),
     )
 }
 
@@ -118,10 +118,22 @@ pub fn score_deliver(ctx: &ScoringContext<'_>) -> ActionScore {
 #[must_use]
 pub fn score_rest(ctx: &ScoringContext<'_>) -> ActionScore {
     if ctx.carried_resource.is_some() {
+        eprintln!(
+            "[SCORE_REST] fatigue={:.2} score={:.3} rest_zone={:?}",
+            ctx.needs.fatigue, 0.0, ctx.perception.nearest_rest_zone
+        );
         return ActionScore::new(ActionKind::Rest, 0.0, None, None);
     }
 
-    let Some(rest_zone) = ctx.perception.nearest_rest_zone else {
+    let Some(rest_zone) = ctx
+        .perception
+        .nearest_rest_zone
+        .or(ctx.perception.nearest_village_store)
+    else {
+        eprintln!(
+            "[SCORE_REST] fatigue={:.2} score={:.3} rest_zone={:?}",
+            ctx.needs.fatigue, 0.0, ctx.perception.nearest_rest_zone
+        );
         return ActionScore::new(ActionKind::Rest, 0.0, None, None);
     };
 
@@ -142,6 +154,10 @@ pub fn score_rest(ctx: &ScoringContext<'_>) -> ActionScore {
         * distance_factor
         * ctx.config.utility_weights.rest
         * role_bias;
+    eprintln!(
+        "[SCORE_REST] fatigue={:.2} score={:.3} rest_zone={:?}",
+        ctx.needs.fatigue, score, ctx.perception.nearest_rest_zone
+    );
 
     ActionScore::new(
         ActionKind::Rest,

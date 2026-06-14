@@ -9,10 +9,18 @@ use crate::ai::actions::ActionKind;
 use crate::ai::decision::DecisionOutput;
 use crate::engine::SimulationTime;
 use crate::simulation::events::{
-    AgentDied, DeathCause, NeedKind, NeedThresholdReached, ThresholdLevel,
+    AgentDied, AgentSpawned, DeathCause, NeedKind, NeedThresholdReached, ThresholdLevel,
 };
+use crate::simulation::spatial::Collider;
 use crate::simulation::world::SimulationConfig;
-use crate::simulation::{CarriedResource, VillageStore};
+use crate::simulation::{CarriedResource, ResourceNode, VillageStore};
+
+const LOW_POPULATION_SPAWN_THRESHOLD: u32 = 8;
+const SPAWN_RESOURCE_THRESHOLD: f32 = 200.0;
+const SPAWN_VILLAGE_FOOD_THRESHOLD: f32 = 100.0;
+const SPAWN_COOLDOWN_SECS: f32 = 15.0;
+const SPAWN_BATCH_SIZE: u32 = 2;
+const SPAWN_RADIUS_AROUND_STORE: f32 = 20.0;
 
 /// Stable identifier for an agent entity.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -95,6 +103,10 @@ pub struct Velocity {
     pub linear: Vec3,
 }
 
+/// Countdown controlling low-population recovery spawns.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq)]
+pub struct SpawnCooldown(pub f32);
+
 impl Default for Velocity {
     fn default() -> Self {
         Self { linear: Vec3::ZERO }
@@ -154,6 +166,8 @@ pub struct SimulationMetrics {
     pub carrying_count: u32,
     /// Total food stored in rest zones.
     pub village_food: f32,
+    /// Total food available in resource nodes plus village stores.
+    pub total_resource_available: f32,
 }
 
 /// Advance agent age and needs at the fixed simulation rate.
@@ -213,7 +227,7 @@ pub fn random_walk_system(
 /// Transition agent state from the latest AI decision.
 pub fn agent_state_transition_system(
     sim_time: Res<SimulationTime>,
-    mut query: Query<(&DecisionOutput, &Transform, &mut AgentState), With<Agent>>,
+    mut query: Query<(&mut DecisionOutput, &Transform, &Needs, &mut AgentState), With<Agent>>,
 ) {
     if sim_time.paused {
         return;
@@ -221,12 +235,15 @@ pub fn agent_state_transition_system(
 
     let dt = crate::engine::time::FIXED_TIMESTEP;
 
-    for (decision, transform, mut state) in &mut query {
-        let next = state_for_decision(decision, transform.translation);
+    for (mut decision, transform, needs, mut state) in &mut query {
+        let next = state_for_decision(&decision, transform.translation, needs, &state);
         if state.current != next {
             state.previous = state.current;
             state.current = next;
             state.time_in_state = 0.0;
+            if state.current == StateKind::Resting {
+                decision.target_position = None;
+            }
         } else {
             state.time_in_state += dt;
         }
@@ -266,9 +283,7 @@ pub fn agent_movement_system(
             target.z - transform.translation.z,
         );
         let distance = offset.length();
-        if distance <= 0.2
-            || matches!(decision.action, ActionKind::Eat | ActionKind::Rest) && distance <= 1.2
-        {
+        if distance <= movement_arrival_threshold(decision.action) {
             velocity.linear = Vec3::ZERO;
             continue;
         }
@@ -288,16 +303,20 @@ pub fn agent_movement_system(
 pub fn agent_death_system(
     mut commands: Commands,
     sim_time: Res<SimulationTime>,
-    query: Query<(Entity, &Needs), With<Agent>>,
+    query: Query<(Entity, &Agent, &Needs)>,
     mut events: EventWriter<AgentDied>,
 ) {
     if sim_time.paused {
         return;
     }
 
-    for (entity, needs) in &query {
+    for (entity, agent, needs) in &query {
         let cause = death_cause(*needs);
         if let Some(cause) = cause {
+            eprintln!(
+                "[DEATH] cause={:?} hunger={:.2} fatigue={:.2} age={:.1}s",
+                cause, needs.hunger, needs.fatigue, agent.age
+            );
             commands.entity(entity).despawn();
             events.send(AgentDied {
                 agent: entity,
@@ -310,6 +329,7 @@ pub fn agent_death_system(
 /// Refresh aggregate simulation metrics for read-only UI.
 pub fn metrics_update_system(
     agents: Query<(&Needs, Option<&CarriedResource>), With<Agent>>,
+    resources: Query<&ResourceNode>,
     stores: Query<&VillageStore>,
     mut metrics: ResMut<SimulationMetrics>,
 ) {
@@ -331,7 +351,12 @@ pub fn metrics_update_system(
 
     metrics.agent_count = count;
     metrics.carrying_count = carrying_count;
-    metrics.village_food = stores.iter().map(|store| store.food).sum();
+    metrics.village_food = stores.iter().map(|store| store.food_amount).sum();
+    metrics.total_resource_available = resources
+        .iter()
+        .map(|resource| resource.amount)
+        .sum::<f32>()
+        + metrics.village_food;
     if count == 0 {
         metrics.avg_hunger = 0.0;
         metrics.avg_fatigue = 0.0;
@@ -342,6 +367,100 @@ pub fn metrics_update_system(
         metrics.avg_fatigue = fatigue / count;
         metrics.avg_energy = energy / count;
     }
+}
+
+/// Spawn replacement agents when population is low and stored food can support recovery.
+pub fn agent_spawn_system(
+    mut commands: Commands,
+    sim_time: Res<SimulationTime>,
+    config: Res<SimulationConfig>,
+    metrics: Res<SimulationMetrics>,
+    mut cooldown: ResMut<SpawnCooldown>,
+    mut rng: ResMut<SimRng>,
+    agents: Query<&Agent>,
+    stores: Query<(&Transform, &VillageStore)>,
+    mut events: EventWriter<AgentSpawned>,
+) {
+    if sim_time.paused {
+        return;
+    }
+
+    let dt = crate::engine::time::FIXED_TIMESTEP;
+    cooldown.0 = (cooldown.0 - dt).max(0.0);
+    if cooldown.0 > 0.0
+        || metrics.agent_count >= LOW_POPULATION_SPAWN_THRESHOLD
+        || metrics.total_resource_available <= SPAWN_RESOURCE_THRESHOLD
+        || metrics.village_food <= SPAWN_VILLAGE_FOOD_THRESHOLD
+    {
+        return;
+    }
+
+    let Some(store_position) = nearest_store_to_world_center(&config, &stores) else {
+        return;
+    };
+
+    let mut next_id = agents
+        .iter()
+        .map(|agent| agent.id.0)
+        .max()
+        .map_or(0, |id| id.saturating_add(1));
+
+    for _ in 0..SPAWN_BATCH_SIZE {
+        let direction = rng.next_xz_direction();
+        let distance = rng.next_in_range(0.0, SPAWN_RADIUS_AROUND_STORE);
+        let mut position = store_position + direction * distance;
+        position.x = position.x.clamp(0.0, config.world_size.x);
+        position.y = config.agent_visual_height;
+        position.z = position.z.clamp(0.0, config.world_size.y);
+
+        let entity = commands
+            .spawn((
+                Agent {
+                    id: AgentId(next_id),
+                    age: 0.0,
+                },
+                Needs {
+                    hunger: 0.3,
+                    fatigue: 0.1,
+                    energy: 0.9,
+                },
+                AgentState::default(),
+                Velocity::default(),
+                Collider {
+                    radius: config.agent_collider_radius,
+                },
+                Transform::from_translation(position),
+            ))
+            .id();
+        events.send(AgentSpawned {
+            agent: entity,
+            position,
+        });
+        next_id = next_id.saturating_add(1);
+    }
+
+    eprintln!(
+        "[SPAWN] spawned 2 agents, population was {}",
+        metrics.agent_count
+    );
+    cooldown.0 = SPAWN_COOLDOWN_SECS;
+}
+
+fn nearest_store_to_world_center(
+    config: &SimulationConfig,
+    stores: &Query<(&Transform, &VillageStore)>,
+) -> Option<Vec3> {
+    let world_center = Vec3::new(config.world_size.x * 0.5, 0.0, config.world_size.y * 0.5);
+    stores
+        .iter()
+        .filter(|(_, store)| store.food_amount > 0.0)
+        .min_by(|(left_transform, _), (right_transform, _)| {
+            left_transform
+                .translation
+                .distance(world_center)
+                .total_cmp(&right_transform.translation.distance(world_center))
+        })
+        .map(|(transform, _)| transform.translation)
 }
 
 fn apply_needs_decay(
@@ -426,14 +545,27 @@ fn transition_state(state: &mut AgentState, next: StateKind) {
     state.time_in_state = 0.0;
 }
 
-fn state_for_decision(decision: &DecisionOutput, position: Vec3) -> StateKind {
+fn state_for_decision(
+    decision: &DecisionOutput,
+    position: Vec3,
+    needs: &Needs,
+    state: &AgentState,
+) -> StateKind {
+    if state.current == StateKind::Resting && needs.hunger < 0.85 {
+        if state.time_in_state < 3.0 || needs.fatigue >= 0.3 {
+            return StateKind::Resting;
+        }
+    }
+
     match decision.action {
         ActionKind::Idle | ActionKind::Collect => StateKind::Idle,
         ActionKind::Explore => StateKind::Exploring,
         ActionKind::MoveTo => StateKind::MovingToTarget,
-        ActionKind::Deliver => StateKind::Carrying,
-        ActionKind::Eat => state_for_target_action(decision, position, StateKind::Eating),
-        ActionKind::Rest => state_for_target_action(decision, position, StateKind::Resting),
+        ActionKind::Deliver => {
+            state_for_target_action(decision, position, StateKind::Carrying, 4.0)
+        },
+        ActionKind::Eat => state_for_target_action(decision, position, StateKind::Eating, 2.5),
+        ActionKind::Rest => state_for_target_action(decision, position, StateKind::Resting, 5.0),
     }
 }
 
@@ -441,14 +573,31 @@ fn state_for_target_action(
     decision: &DecisionOutput,
     position: Vec3,
     arrived_state: StateKind,
+    threshold: f32,
 ) -> StateKind {
     let Some(target) = decision.target_position else {
         return StateKind::Idle;
     };
-    if position.distance(target) <= 1.2 {
+    let distance = position.distance(target);
+    if matches!(decision.action, ActionKind::Rest) {
+        eprintln!(
+            "[REST_ARRIVE] dist={:.2} threshold=5.0 action={:?}",
+            distance, decision.action
+        );
+    }
+    if distance <= threshold {
         arrived_state
     } else {
         StateKind::MovingToTarget
+    }
+}
+
+fn movement_arrival_threshold(action: ActionKind) -> f32 {
+    match action {
+        ActionKind::Eat => 2.5,
+        ActionKind::Deliver => 4.0,
+        ActionKind::Rest => 5.0,
+        _ => 0.2,
     }
 }
 

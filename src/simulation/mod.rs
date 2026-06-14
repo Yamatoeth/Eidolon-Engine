@@ -12,7 +12,8 @@ pub mod spatial;
 pub mod world;
 
 pub use agent::{
-    Agent, AgentId, AgentState, Needs, SimRng, SimulationMetrics, StateKind, Velocity,
+    Agent, AgentId, AgentState, Needs, SimRng, SimulationMetrics, SpawnCooldown, StateKind,
+    Velocity,
 };
 pub use events::{
     AgentDied, AgentSpawned, DeathCause, NeedKind, NeedThresholdReached, ResourceConsumed,
@@ -32,6 +33,7 @@ impl Plugin for SimulationPlugin {
             .init_resource::<SimRng>()
             .init_resource::<SpatialGrid>()
             .init_resource::<SimulationMetrics>()
+            .init_resource::<SpawnCooldown>()
             .init_resource::<rules::RegenPressureMultiplier>()
             .add_event::<NeedThresholdReached>()
             .add_event::<AgentDied>()
@@ -58,6 +60,7 @@ impl Plugin for SimulationPlugin {
                 )
                     .chain()
                     .after(crate::engine::time::update_simulation_time),
-            );
+            )
+            .add_systems(FixedPostUpdate, agent::agent_spawn_system);
     }
 }

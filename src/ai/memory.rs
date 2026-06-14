@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use crate::engine::SimulationTime;
 use crate::simulation::{Agent, ResourceKind, ResourceNode, Zone, ZoneKind};
 
-const MEMORY_TTL_SECS: f32 = 45.0;
+const MEMORY_TTL_SECS: f32 = 12.0;
 const MAX_KNOWN_RESOURCES: usize = 8;
 const MAX_KNOWN_REST_ZONES: usize = 4;
 const SHARE_RADIUS: f32 = 9.0;
