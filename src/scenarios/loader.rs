@@ -143,6 +143,7 @@ impl ScenarioConfig {
             seed: self.seed,
             global_decay_multiplier: self.sim_overrides.global_decay_multiplier,
             global_regen_multiplier: self.sim_overrides.global_regen_multiplier,
+            agent_move_speed: 7.0,
             ..SimulationConfig::default()
         }
     }

@@ -551,8 +551,8 @@ fn state_for_decision(
     needs: &Needs,
     state: &AgentState,
 ) -> StateKind {
-    if state.current == StateKind::Resting && needs.hunger < 0.85 {
-        if state.time_in_state < 3.0 || needs.fatigue >= 0.3 {
+    if state.current == StateKind::Resting && needs.hunger < 0.92 {
+        if state.time_in_state < 3.0 || needs.fatigue >= 0.15 {
             return StateKind::Resting;
         }
     }
@@ -579,12 +579,6 @@ fn state_for_target_action(
         return StateKind::Idle;
     };
     let distance = position.distance(target);
-    if matches!(decision.action, ActionKind::Rest) {
-        eprintln!(
-            "[REST_ARRIVE] dist={:.2} threshold=5.0 action={:?}",
-            distance, decision.action
-        );
-    }
     if distance <= threshold {
         arrived_state
     } else {
@@ -604,7 +598,7 @@ fn movement_arrival_threshold(action: ActionKind) -> f32 {
 fn death_cause(needs: Needs) -> Option<DeathCause> {
     if needs.hunger >= 1.0 {
         Some(DeathCause::Starvation)
-    } else if needs.fatigue >= 1.0 || needs.energy <= 0.0 {
+    } else if needs.fatigue >= 1.0 || needs.energy <= 0.0 && needs.fatigue >= 0.8 {
         Some(DeathCause::Exhaustion)
     } else {
         None

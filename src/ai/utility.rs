@@ -55,7 +55,7 @@ impl Default for UtilityWeights {
     fn default() -> Self {
         Self {
             eat: 1.0,
-            rest: 0.9,
+            rest: 1.3,
             explore: 0.4,
             collect: 0.6,
             idle: 0.1,

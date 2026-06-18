@@ -117,23 +117,20 @@ pub fn score_deliver(ctx: &ScoringContext<'_>) -> ActionScore {
 /// Score resting based on fatigue and nearby rest zones.
 #[must_use]
 pub fn score_rest(ctx: &ScoringContext<'_>) -> ActionScore {
-    if ctx.carried_resource.is_some() {
-        eprintln!(
-            "[SCORE_REST] fatigue={:.2} score={:.3} rest_zone={:?}",
-            ctx.needs.fatigue, 0.0, ctx.perception.nearest_rest_zone
-        );
-        return ActionScore::new(ActionKind::Rest, 0.0, None, None);
-    }
+    let carrying_rest_multiplier = if ctx.carried_resource.is_some() {
+        if ctx.needs.fatigue < 0.75 {
+            return ActionScore::new(ActionKind::Rest, 0.0, None, None);
+        }
+        0.6
+    } else {
+        1.0
+    };
 
     let Some(rest_zone) = ctx
         .perception
         .nearest_rest_zone
         .or(ctx.perception.nearest_village_store)
     else {
-        eprintln!(
-            "[SCORE_REST] fatigue={:.2} score={:.3} rest_zone={:?}",
-            ctx.needs.fatigue, 0.0, ctx.perception.nearest_rest_zone
-        );
         return ActionScore::new(ActionKind::Rest, 0.0, None, None);
     };
 
@@ -153,11 +150,8 @@ pub fn score_rest(ctx: &ScoringContext<'_>) -> ActionScore {
         * not_resting
         * distance_factor
         * ctx.config.utility_weights.rest
-        * role_bias;
-    eprintln!(
-        "[SCORE_REST] fatigue={:.2} score={:.3} rest_zone={:?}",
-        ctx.needs.fatigue, score, ctx.perception.nearest_rest_zone
-    );
+        * role_bias
+        * carrying_rest_multiplier;
 
     ActionScore::new(
         ActionKind::Rest,

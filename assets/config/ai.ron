@@ -11,6 +11,6 @@
         idle: 0.1,
     ),
     decision_interval: 0.25,
-    perception_radius: 30.0,
+    perception_radius: 45.0,
     rest_zone_perception_radius: 60.0,
 )

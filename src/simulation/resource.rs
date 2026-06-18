@@ -14,8 +14,8 @@ const RESOURCE_REPLENISH_THRESHOLD_FRACTION: f32 = 0.2;
 const EAT_RANGE: f32 = 2.5;
 const DEPOSIT_RANGE: f32 = 4.0;
 const CARRY_CAPACITY: f32 = 24.0;
-const FOOD_COST_PER_HUNGER: f32 = 8.0;
-const VILLAGE_FEED_RATE: f32 = 0.8;
+const FOOD_COST_PER_HUNGER: f32 = 3.0;
+const VILLAGE_FEED_RATE: f32 = 2.0;
 const DEFAULT_STORE_CAPACITY: f32 = 500.0;
 
 type ForagingAgentQueryItem<'w> = (
@@ -277,13 +277,19 @@ pub fn rest_recovery_system(
 
     for (transform, state, mut needs) in &mut agents {
         total_count = total_count.saturating_add(1);
-        feed_from_nearby_store(transform.translation, &mut needs, dt, &mut stores);
+        let is_near_store =
+            feed_from_nearby_store(transform.translation, &mut needs, dt, &mut stores);
+
+        if is_near_store && needs.fatigue > 0.6 && state.current != StateKind::Resting {
+            needs.fatigue = (needs.fatigue - 0.02 * dt).clamp(0.0, 1.0);
+            needs.energy = (needs.energy + 0.01 * dt).clamp(0.0, 1.0);
+        }
 
         if state.current == StateKind::Resting {
             resting_count = resting_count.saturating_add(1);
             let fatigue_before = needs.fatigue;
             needs.fatigue = (needs.fatigue - 0.05 * dt).clamp(0.0, 1.0);
-            needs.energy = (needs.energy + 0.03 * dt).clamp(0.0, 1.0);
+            needs.energy = (needs.energy + 0.06 * dt).clamp(0.0, 1.0);
             if fatigue_before > 0.1 {
                 eprintln!(
                     "[REST] fatigue={:.3} -> {:.3} recovery={:.4}",
@@ -309,11 +315,12 @@ fn feed_from_nearby_store(
     needs: &mut Needs,
     dt: f32,
     stores: &mut Query<(&Transform, &mut VillageStore)>,
-) {
+) -> bool {
     for (transform, mut store) in stores.iter_mut() {
         if position.distance(transform.translation) <= 12.0 {
             store.feed_agent(needs, dt);
-            break;
+            return true;
         }
     }
+    false
 }
