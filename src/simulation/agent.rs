@@ -263,15 +263,16 @@ pub fn agent_movement_system(
     let dt = crate::engine::time::FIXED_TIMESTEP;
 
     for (decision, mut transform, mut velocity) in &mut query {
-        let should_move = matches!(
-            decision.action,
-            ActionKind::MoveTo
-                | ActionKind::Eat
-                | ActionKind::Rest
-                | ActionKind::Explore
-                | ActionKind::Deliver
-                | ActionKind::Collect
-        );
+        let should_move = !matches!(decision.action, ActionKind::Idle)
+            && matches!(
+                decision.action,
+                ActionKind::MoveTo
+                    | ActionKind::Eat
+                    | ActionKind::Rest
+                    | ActionKind::Explore
+                    | ActionKind::Deliver
+                    | ActionKind::Collect
+            );
         let Some(target) = decision.target_position.filter(|_| should_move) else {
             velocity.linear = Vec3::ZERO;
             continue;
@@ -370,6 +371,7 @@ pub fn metrics_update_system(
 }
 
 /// Spawn replacement agents when population is low and stored food can support recovery.
+#[allow(clippy::too_many_arguments)]
 pub fn agent_spawn_system(
     mut commands: Commands,
     sim_time: Res<SimulationTime>,
@@ -551,10 +553,12 @@ fn state_for_decision(
     needs: &Needs,
     state: &AgentState,
 ) -> StateKind {
-    if state.current == StateKind::Resting && needs.hunger < 0.92 {
-        if state.time_in_state < 3.0 || needs.fatigue >= 0.15 {
-            return StateKind::Resting;
-        }
+    // Leave Resting only when genuinely rested or critically hungry.
+    if state.current == StateKind::Resting
+        && needs.hunger < 0.85
+        && (state.time_in_state < 2.0 || needs.fatigue >= 0.08)
+    {
+        return StateKind::Resting;
     }
 
     match decision.action {

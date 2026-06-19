@@ -147,9 +147,12 @@ fn draw_billboard_need_bar(gizmos: &mut Gizmos, center: Vec3, right: Vec3, up: V
         let offset = -BAR_HEIGHT * 0.5
             + BAR_HEIGHT * (index as f32 / (BAR_SEGMENTS.saturating_sub(1)) as f32);
         let row_start = left + up * offset;
-        gizmos.line(row_start, row_start + right * BAR_WIDTH, background_color);
         if fill_width > 0.0 {
             gizmos.line(row_start, row_start + right * fill_width, foreground_color);
+        }
+        if fill_width < BAR_WIDTH {
+            let fill_end = row_start + right * fill_width;
+            gizmos.line(fill_end, row_start + right * BAR_WIDTH, background_color);
         }
     }
 }

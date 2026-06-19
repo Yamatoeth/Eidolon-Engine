@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 use bevy_inspector_egui::bevy_egui::{egui, EguiContexts};
 
+use crate::ai::{ActionKind, AgentBehaviorLogged};
 use crate::engine::SimulationTime;
 use crate::observability::inspector::ObservabilityConfig;
 use crate::simulation::{
@@ -20,6 +21,8 @@ pub enum TimelineFilter {
     All,
     /// Agent lifecycle and need events.
     Agents,
+    /// Agent AI behavior decisions.
+    Behavior,
     /// Resource consumption and regen events.
     Resources,
 }
@@ -33,6 +36,8 @@ pub enum TimelineEventKind {
     AgentDied,
     /// Need threshold was crossed.
     NeedThreshold,
+    /// Agent changed AI behavior.
+    AgentBehavior,
     /// Resource was consumed.
     ResourceConsumed,
     /// Resource was delivered to a village store.
@@ -126,6 +131,25 @@ pub fn timeline_record_agents_system(
     }
 }
 
+/// Mirror AI behavior decisions into the rolling timeline.
+pub fn timeline_record_behavior_system(
+    sim_time: Res<SimulationTime>,
+    config: Res<ObservabilityConfig>,
+    mut timeline: ResMut<EventTimeline>,
+    mut behavior_events: EventReader<AgentBehaviorLogged>,
+) {
+    timeline.max_entries = config.timeline_max_entries;
+
+    for event in behavior_events.read() {
+        timeline.push(entry(
+            &sim_time,
+            TimelineEventKind::AgentBehavior,
+            vec![event.agent],
+            format_behavior_summary(event),
+        ));
+    }
+}
+
 /// Mirror resource simulation events into the rolling timeline.
 pub fn timeline_record_resources_system(
     sim_time: Res<SimulationTime>,
@@ -193,6 +217,7 @@ pub fn timeline_ui_system(
                 ui.label("Filter");
                 ui.selectable_value(&mut timeline.filter, TimelineFilter::All, "All");
                 ui.selectable_value(&mut timeline.filter, TimelineFilter::Agents, "Agents");
+                ui.selectable_value(&mut timeline.filter, TimelineFilter::Behavior, "Behavior");
                 ui.selectable_value(&mut timeline.filter, TimelineFilter::Resources, "Resources");
             });
             ui.label(format!("Events: {}", timeline.events.len()));
@@ -241,6 +266,7 @@ fn event_matches_filter(kind: &TimelineEventKind, filter: TimelineFilter) -> boo
                 | TimelineEventKind::AgentDied
                 | TimelineEventKind::NeedThreshold
         ),
+        TimelineFilter::Behavior => matches!(kind, TimelineEventKind::AgentBehavior),
         TimelineFilter::Resources => matches!(
             kind,
             TimelineEventKind::ResourceConsumed
@@ -268,6 +294,45 @@ fn draw_density(ui: &mut egui::Ui, timeline: &EventTimeline) {
         })
         .collect();
     ui.monospace(format!("density {density}"));
+}
+
+fn format_behavior_summary(event: &AgentBehaviorLogged) -> String {
+    let scores = event
+        .scores
+        .iter()
+        .map(|(action, score)| format!("{}={score:.2}", action_label(*action)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let target = event
+        .target_position
+        .map_or_else(|| "-".to_string(), format_position);
+
+    format!(
+        "{:?}->{:?} intent {:?}->{:?} state={:?} score={:.2} needs h={:.2} f={:.2} e={:.2} target={} scores [{}]",
+        event.previous_action,
+        event.action,
+        event.previous_intent,
+        event.intent,
+        event.state,
+        event.score,
+        event.hunger,
+        event.fatigue,
+        event.energy,
+        target,
+        scores
+    )
+}
+
+fn action_label(action: ActionKind) -> &'static str {
+    match action {
+        ActionKind::Idle => "idle",
+        ActionKind::MoveTo => "move",
+        ActionKind::Eat => "eat",
+        ActionKind::Rest => "rest",
+        ActionKind::Deliver => "deliver",
+        ActionKind::Explore => "explore",
+        ActionKind::Collect => "collect",
+    }
 }
 
 fn format_position(position: Vec3) -> String {

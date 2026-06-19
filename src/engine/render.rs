@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::simulation::{Agent, Needs};
+use crate::simulation::{Agent, AgentState, Needs, StateKind};
 
 /// Width and depth of the Phase 1 world plane.
 pub const WORLD_PLANE_SIZE: f32 = 110.0;
@@ -184,50 +184,78 @@ pub fn draw_debug_grid_system(config: Res<DebugGridConfig>, mut gizmos: Gizmos) 
     }
 }
 
-/// Keep agent body colors synchronized with their dominant need state.
+/// Keep agent body colors synchronized with their visible simulation state.
 pub fn update_agent_need_colors_system(
-    query: Query<(&Needs, &MeshMaterial3d<StandardMaterial>), With<Agent>>,
+    query: Query<(&Needs, &AgentState, &MeshMaterial3d<StandardMaterial>), With<Agent>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    for (needs, material_handle) in &query {
+    for (needs, agent_state, material_handle) in &query {
         if let Some(material) = materials.get_mut(&material_handle.0) {
-            material.base_color = agent_needs_color(needs);
+            material.base_color = agent_visual_color(needs, agent_state.current);
+            material.emissive = match agent_state.current {
+                StateKind::Resting => LinearRgba::rgb(0.04, 0.02, 0.10),
+                StateKind::Eating | StateKind::Carrying => LinearRgba::rgb(0.10, 0.05, 0.01),
+                StateKind::Idle => LinearRgba::rgb(0.01, 0.01, 0.01),
+                _ => LinearRgba::BLACK,
+            };
         }
     }
 }
 
-/// Color used for agent body visuals based on current needs.
+/// Color used before an agent has a resolved state.
 #[must_use]
 pub fn agent_needs_color(needs: &Needs) -> Color {
-    const NORMAL: (f32, f32, f32) = (0.0, 0.706, 0.847);
-    const HUNGRY: (f32, f32, f32) = (0.957, 0.635, 0.380);
-    const STARVING: (f32, f32, f32) = (0.902, 0.224, 0.275);
-    const TIRED: (f32, f32, f32) = (0.608, 0.365, 0.898);
+    agent_visual_color(needs, StateKind::Idle)
+}
 
+/// Main agent body color, with state taking precedence over needs.
+#[must_use]
+pub fn agent_visual_color(needs: &Needs, state: StateKind) -> Color {
     let hunger = needs.hunger.clamp(0.0, 1.0);
     let fatigue = needs.fatigue.clamp(0.0, 1.0);
 
-    let (r, g, b) = if hunger >= fatigue {
-        if hunger > 0.85 {
-            lerp_rgb(HUNGRY, STARVING, ((hunger - 0.85) / 0.15).clamp(0.0, 1.0))
-        } else if hunger > 0.6 {
-            lerp_rgb(NORMAL, HUNGRY, ((hunger - 0.6) / 0.25).clamp(0.0, 1.0))
-        } else {
-            NORMAL
-        }
-    } else if fatigue > 0.7 {
-        lerp_rgb(NORMAL, TIRED, ((fatigue - 0.7) / 0.3).clamp(0.0, 1.0))
-    } else {
-        NORMAL
-    };
-
-    Color::srgb(r, g, b)
+    match state {
+        StateKind::Idle => {
+            if hunger > 0.6 {
+                let t = ((hunger - 0.6) / 0.4).clamp(0.0, 1.0);
+                Color::srgb(
+                    lerp_f(0.431, 0.957, t),
+                    lerp_f(0.541, 0.635, t),
+                    lerp_f(0.604, 0.380, t),
+                )
+            } else {
+                Color::srgb(0.431, 0.541, 0.604)
+            }
+        },
+        StateKind::Exploring | StateKind::MovingToTarget => {
+            let dim = 1.0 - hunger * 0.3;
+            Color::srgb(0.0, 0.706 * dim, 0.847 * dim)
+        },
+        StateKind::Eating => {
+            if hunger > 0.85 {
+                let t = ((hunger - 0.85) / 0.15).clamp(0.0, 1.0);
+                Color::srgb(
+                    lerp_f(0.957, 0.902, t),
+                    lerp_f(0.635, 0.224, t),
+                    lerp_f(0.380, 0.275, t),
+                )
+            } else {
+                Color::srgb(0.957, 0.635, 0.380)
+            }
+        },
+        StateKind::Carrying => Color::srgb(0.957, 0.820, 0.247),
+        StateKind::Resting => {
+            let rest_progress = 1.0 - fatigue;
+            Color::srgb(
+                lerp_f(0.608, 0.349, rest_progress),
+                lerp_f(0.365, 0.729, rest_progress),
+                lerp_f(0.898, 0.980, rest_progress),
+            )
+        },
+        StateKind::Fleeing => Color::srgb(0.902, 0.224, 0.275),
+    }
 }
 
-fn lerp_rgb(from: (f32, f32, f32), to: (f32, f32, f32), t: f32) -> (f32, f32, f32) {
-    (
-        from.0 + (to.0 - from.0) * t,
-        from.1 + (to.1 - from.1) * t,
-        from.2 + (to.2 - from.2) * t,
-    )
+fn lerp_f(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t.clamp(0.0, 1.0)
 }

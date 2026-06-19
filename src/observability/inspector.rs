@@ -139,6 +139,7 @@ pub fn click_to_inspect_system(
 }
 
 /// Draw the inspector entity browser and detail panel.
+#[allow(clippy::too_many_arguments)]
 pub fn inspector_ui_system(
     mut contexts: EguiContexts,
     mut config: ResMut<ObservabilityConfig>,

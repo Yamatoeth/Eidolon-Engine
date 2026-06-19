@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use emergent_sim::{
     ai::{
-        decision::ai_scoring_system, AIConfig, AIDebugInfo, ActionKind, AgentIntent, AgentMemory,
-        AgentRole, DecisionOutput,
+        decision::ai_scoring_system, AIConfig, AIDebugInfo, ActionKind, AgentBehaviorLogged,
+        AgentIntent, AgentMemory, AgentRole, DecisionOutput,
     },
     engine::SimulationTime,
     simulation::{
@@ -205,6 +205,7 @@ fn ai_selects_deliver_to_visible_village_store_for_carried_food() {
         .init_resource::<AIConfig>()
         .init_resource::<SimRng>()
         .init_resource::<SpatialGrid>()
+        .add_event::<AgentBehaviorLogged>()
         .add_systems(Update, ai_scoring_system);
 
     let store = app
@@ -253,4 +254,13 @@ fn ai_selects_deliver_to_visible_village_store_for_carried_food() {
     assert_eq!(decision.target, Some(store));
     assert_eq!(decision.target_position, Some(Vec3::new(4.0, 0.0, 0.0)));
     assert!(decision.score > 0.7);
+
+    let behavior_events = app.world().resource::<Events<AgentBehaviorLogged>>();
+    let logged = behavior_events
+        .iter_current_update_events()
+        .find(|event| event.agent == agent)
+        .expect("behavior change should be logged");
+    assert_eq!(logged.previous_action, ActionKind::Idle);
+    assert_eq!(logged.action, ActionKind::Deliver);
+    assert_eq!(logged.intent, AgentIntent::Deliver { zone: store });
 }

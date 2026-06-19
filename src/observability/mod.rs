@@ -53,6 +53,7 @@ impl Plugin for ObservabilityPlugin {
                     FixedUpdate,
                     (
                         timeline::timeline_record_agents_system,
+                        timeline::timeline_record_behavior_system,
                         timeline::timeline_record_resources_system,
                         replay::replay_record_system,
                     ),

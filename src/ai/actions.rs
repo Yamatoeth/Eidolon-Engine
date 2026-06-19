@@ -135,8 +135,9 @@ pub fn score_rest(ctx: &ScoringContext<'_>) -> ActionScore {
     };
 
     let fatigue_urgency = Curve::Quadratic.evaluate(ctx.needs.fatigue);
+    // Keep rest utility low while already resting so other actions can win once recovered.
     let not_resting = if ctx.state.current == StateKind::Resting {
-        0.45
+        0.12
     } else {
         1.0
     };

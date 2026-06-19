@@ -11,8 +11,8 @@ pub mod utility;
 
 pub use actions::{ActionKind, ActionScore};
 pub use decision::{
-    AIDebugInfo, AgentIntent, AgentRole, DecisionOutput, PerceptionData, VisibleResource,
-    VisibleZone,
+    AIDebugInfo, AgentBehaviorLogged, AgentIntent, AgentRole, DecisionOutput, PerceptionData,
+    VisibleResource, VisibleZone,
 };
 pub use memory::{AgentMemory, KnownResource, KnownRestZone};
 pub use utility::{AIConfig, UtilityWeights};
@@ -25,6 +25,7 @@ pub struct AIPlugin;
 impl Plugin for AIPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AIConfig>()
+            .add_event::<decision::AgentBehaviorLogged>()
             .add_systems(Startup, load_ai_config_system)
             .add_systems(
                 FixedUpdate,

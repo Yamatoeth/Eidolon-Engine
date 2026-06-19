@@ -11,7 +11,7 @@ use crate::ai::utility::{AIConfig, ScoringContext};
 use crate::engine::SimulationTime;
 use crate::simulation::{
     Agent, AgentState, CarriedResource, Needs, ResourceKind, ResourceNode, SimRng, SpatialGrid,
-    VillageStore, Zone, ZoneKind,
+    StateKind, VillageStore, Zone, ZoneKind,
 };
 
 type AIAgentQueryItem<'w> = (
@@ -93,6 +93,37 @@ pub struct AIDebugInfo {
     pub last_scores: Vec<(ActionKind, f32)>,
     /// Last decision timestamp.
     pub last_decision_time: f32,
+}
+
+/// Behavioral decision trace emitted when an agent changes behavior.
+#[derive(Event, Clone, Debug, PartialEq)]
+pub struct AgentBehaviorLogged {
+    /// Agent entity whose behavior changed.
+    pub agent: Entity,
+    /// Previous selected action.
+    pub previous_action: ActionKind,
+    /// Newly selected action.
+    pub action: ActionKind,
+    /// Previous high-level intent.
+    pub previous_intent: AgentIntent,
+    /// Newly selected high-level intent.
+    pub intent: AgentIntent,
+    /// Current simulation state.
+    pub state: StateKind,
+    /// Optional selected target entity.
+    pub target: Option<Entity>,
+    /// Optional selected world target.
+    pub target_position: Option<Vec3>,
+    /// Selected action utility score.
+    pub score: f32,
+    /// Hunger at decision time.
+    pub hunger: f32,
+    /// Fatigue at decision time.
+    pub fatigue: f32,
+    /// Energy at decision time.
+    pub energy: f32,
+    /// Last scored actions in evaluation order.
+    pub scores: Vec<(ActionKind, f32)>,
 }
 
 impl Default for AIDebugInfo {
@@ -178,11 +209,13 @@ pub fn attach_ai_components_system(
 }
 
 /// Evaluate utility scores and write `DecisionOutput` components.
+#[allow(clippy::too_many_arguments)]
 pub fn ai_scoring_system(
     sim_time: Res<SimulationTime>,
     config: Res<AIConfig>,
     mut rng: ResMut<SimRng>,
     spatial_grid: Res<SpatialGrid>,
+    mut behavior_events: EventWriter<AgentBehaviorLogged>,
     mut agents: Query<AIAgentQueryItem>,
     resources: Query<(Entity, &Transform, &ResourceNode)>,
     zones: Query<(Entity, &Transform, &Zone)>,
@@ -209,6 +242,8 @@ pub fn ai_scoring_system(
             continue;
         }
 
+        let previous_decision = *decision;
+        let previous_intent = *intent;
         let perception = build_perception(
             entity,
             transform.translation,
@@ -242,6 +277,29 @@ pub fn ai_scoring_system(
             score_idle(&ctx),
         ];
         let selected = select_best_action(&scores);
+        let next_intent = intent_for_action(selected);
+        let score_snapshot = scores
+            .iter()
+            .map(|score| (score.action, score.score))
+            .collect::<Vec<_>>();
+
+        if should_log_behavior_change(previous_decision, previous_intent, selected, next_intent) {
+            behavior_events.send(AgentBehaviorLogged {
+                agent: entity,
+                previous_action: previous_decision.action,
+                action: selected.action,
+                previous_intent,
+                intent: next_intent,
+                state: state.current,
+                target: selected.target,
+                target_position: selected.target_position,
+                score: selected.score,
+                hunger: needs.hunger,
+                fatigue: needs.fatigue,
+                energy: needs.energy,
+                scores: score_snapshot.clone(),
+            });
+        }
 
         *decision = DecisionOutput {
             action: selected.action,
@@ -250,12 +308,9 @@ pub fn ai_scoring_system(
             score: selected.score,
             last_decision_time: sim_time.elapsed,
         };
-        debug.last_scores = scores
-            .iter()
-            .map(|score| (score.action, score.score))
-            .collect();
+        debug.last_scores = score_snapshot;
         debug.last_decision_time = sim_time.elapsed;
-        *intent = intent_for_action(selected);
+        *intent = next_intent;
     }
 }
 
@@ -374,6 +429,17 @@ fn role_for_agent(agent_id: u64) -> AgentRole {
         1 | 2 => AgentRole::Forager,
         _ => AgentRole::Worker,
     }
+}
+
+fn should_log_behavior_change(
+    previous_decision: DecisionOutput,
+    previous_intent: AgentIntent,
+    selected: ActionScore,
+    next_intent: AgentIntent,
+) -> bool {
+    previous_decision.action != selected.action
+        || previous_decision.target != selected.target
+        || previous_intent != next_intent
 }
 
 fn intent_for_action(action: ActionScore) -> AgentIntent {
