@@ -39,6 +39,7 @@
 
 # Log files
 *.log
+/logs/
 
 # OS files
 .DS_Store

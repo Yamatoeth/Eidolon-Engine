@@ -36,6 +36,8 @@ pub struct ObservabilityConfig {
     pub timeline_max_entries: usize,
     /// Ticks between replay snapshot records.
     pub replay_record_interval_ticks: u32,
+    /// Whether agent behavior changes should be exported as JSON lines.
+    pub behavior_log_export_enabled: bool,
 }
 
 impl Default for ObservabilityConfig {
@@ -46,6 +48,7 @@ impl Default for ObservabilityConfig {
             overlays_enabled: true,
             timeline_max_entries: 1_000,
             replay_record_interval_ticks: 10,
+            behavior_log_export_enabled: true,
         }
     }
 }

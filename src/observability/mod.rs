@@ -8,6 +8,8 @@ use bevy::prelude::*;
 use bevy_inspector_egui::{bevy_egui::EguiPlugin, DefaultInspectorConfigPlugin};
 
 #[cfg(feature = "observability")]
+pub mod behavior_log;
+#[cfg(feature = "observability")]
 pub mod hud;
 #[cfg(feature = "observability")]
 pub mod inspector;
@@ -30,6 +32,7 @@ impl Plugin for ObservabilityPlugin {
                 .init_resource::<inspector::ObservabilityConfig>()
                 .init_resource::<inspector::InspectorState>()
                 .init_resource::<timeline::EventTimeline>()
+                .init_resource::<behavior_log::BehaviorLogExport>()
                 .init_resource::<replay::ReplayBuffer>()
                 .init_resource::<hud::ScenarioIndicatorState>()
                 .add_systems(
@@ -54,6 +57,7 @@ impl Plugin for ObservabilityPlugin {
                     (
                         timeline::timeline_record_agents_system,
                         timeline::timeline_record_behavior_system,
+                        behavior_log::behavior_log_export_system,
                         timeline::timeline_record_resources_system,
                         replay::replay_record_system,
                     ),
